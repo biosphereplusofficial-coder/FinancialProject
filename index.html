@@ -88,7 +88,8 @@ footer a{color:var(--g)}
   <div class="hdr-r">
     <span id="srcBadge" style="background:rgba(250,204,21,.2);border:1px solid rgba(250,204,21,.4);color:#92400e">⟳ Memuat...</span>
     <span id="lupd" style="font-size:11px;opacity:.75"></span>
-    <button class="rbtn" onclick="loadAll()">&#8635; Refresh</button>
+    <span id="countdown" style="font-size:10px;opacity:.5">⟳ 30s</span>
+    <button class="rbtn" onclick="manualRefresh()">&#8635; Refresh</button>
   </div>
 </div>
 
@@ -531,7 +532,48 @@ function renderAll() {
   }, 60);
 }
 
-window.addEventListener('DOMContentLoaded', loadAll);
+// Auto-refresh setiap 30 detik di browser
+const REFRESH_INTERVAL = 30000; // 30 detik
+let refreshTimer;
+
+function startAutoRefresh() {
+  clearInterval(refreshTimer);
+  refreshTimer = setInterval(async () => {
+    // Refresh tanpa full re-render jika tidak ada perubahan
+    const before = JSON.stringify(D);
+    await loadAll();
+    // Hanya re-render jika data berubah
+    // loadAll() sudah memanggil renderAll() jadi ini otomatis
+  }, REFRESH_INTERVAL);
+}
+
+// ─── AUTO REFRESH (browser-side, every 30s) ──────────────────────────────────
+const REFRESH_SEC = 30;
+let refreshTimer = null;
+let cdSec = REFRESH_SEC;
+
+function startAutoRefresh() {
+  clearInterval(refreshTimer);
+  cdSec = REFRESH_SEC;
+  refreshTimer = setInterval(() => {
+    cdSec--;
+    const el = document.getElementById('countdown');
+    if(el) el.textContent = '⟳ ' + cdSec + 's';
+    if(cdSec <= 0) {
+      cdSec = REFRESH_SEC;
+      loadAll();
+    }
+  }, 1000);
+}
+
+function manualRefresh() {
+  clearInterval(refreshTimer);
+  loadAll().then(() => startAutoRefresh());
+}
+
+window.addEventListener('DOMContentLoaded', () => {
+  loadAll().then(() => startAutoRefresh());
+});
 </script>
 </body>
 </html>
