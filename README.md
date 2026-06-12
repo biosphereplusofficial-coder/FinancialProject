@@ -54,14 +54,14 @@ Agar data live bisa diambil, spreadsheet harus di-set **public**:
 ## 🎨 Sheet yang Digunakan
 | Sheet | GID | Konten |
 |-------|-----|--------|
-| Projects | 0 | Master data proyek |
-| Budget | 1362918701 | RAB & realisasi anggaran |
-| Transaksi | 1022458892 | Jurnal harian |
+| Projects | 1978030258 | Master data proyek |
+| Budget | 543642149 | RAB & realisasi anggaran |
+| Transaksi | 1162847060 | Jurnal harian |
 | Termin | 683807027 | Jadwal & status penagihan |
-| Kontrak | 1290930633 | Detail kontrak & retensi |
-| Pinjaman | 1822755740 | Modal investor |
-| ProfitSharing | 1559896030 | Distribusi laba |
-| Akun | 2131559881 | Saldo rekening |
+| Kontrak | 1359150712 | Detail kontrak & retensi |
+| Pinjaman | 421562363 | Modal investor |
+| ProfitSharing | 2010155024 | Distribusi laba |
+| Akun | 1111734438 | Saldo rekening |
 
 ---
 *LabERP v1.0 — Built with Chart.js & PapaParse*
