@@ -104,13 +104,8 @@ footer a{color:var(--g)}
   <select id="sProj" onchange="renderAll()"><option value="all">Semua Proyek</option></select>
 </div>
 
-<div id="mc">
-  <div class="loading">
-    <div class="sp"></div>
-    <p style="color:var(--tx2);font-size:13px">Mengambil data dari Google Sheets...</p>
-    <p style="color:var(--tx2);font-size:11px;opacity:.7">Membutuhkan koneksi internet</p>
-  </div>
-</div>
+<div id="loadBar" style="height:3px;background:var(--g);width:0%;transition:width .3s;position:fixed;top:0;left:0;z-index:999"></div>
+<div id="mc"></div>
 
 <footer id="ft" style="display:none">
   LabERP Dashboard v1.0 &mdash;
@@ -195,8 +190,10 @@ const lg = (c,l) => `<div class="lg"><div class="lgd" style="background:${c}"></
 
 // ─── FETCH ────────────────────────────────────────────────────────────────────
 function fetchSheet(name, gid) {
-  // Try export first (requires public), fallback to pub
+  // Use gviz/tq CSV endpoint — works in browsers, bypasses CORS
+  // With a 8-second timeout per URL
   const urls = [
+    `https://docs.google.com/spreadsheets/d/${SID}/gviz/tq?tqx=out:csv&gid=${gid}`,
     `https://docs.google.com/spreadsheets/d/${SID}/export?format=csv&gid=${gid}`,
     `https://docs.google.com/spreadsheets/d/${SID}/pub?output=csv&gid=${gid}`,
   ];
@@ -204,13 +201,17 @@ function fetchSheet(name, gid) {
     let tried = 0;
     const tryNext = () => {
       if(tried >= urls.length) { resolve({ name, rows: [], ok: false }); return; }
-      Papa.parse(urls[tried++], {
+      const url = urls[tried++];
+      // Timeout wrapper: if PapaParse hangs, move on after 8s
+      const timeout = setTimeout(() => tryNext(), 8000);
+      Papa.parse(url, {
         download: true, header: true, skipEmptyLines: true,
         complete: r => {
+          clearTimeout(timeout);
           if(r.data && r.data.length > 0) resolve({ name, rows: r.data, ok: true });
           else tryNext();
         },
-        error: () => tryNext()
+        error: () => { clearTimeout(timeout); tryNext(); }
       });
     };
     tryNext();
@@ -220,6 +221,12 @@ function fetchSheet(name, gid) {
 async function loadAll() {
   setBadge('loading');
   document.getElementById('lupd').textContent = 'Mengambil data...';
+
+  // Show demo data immediately so UI is not blank
+  if(Object.keys(D).length === 0) {
+    D = {...DEMO};
+    renderAll();
+  }
 
   const results = await Promise.all(SHEETS.map(s => fetchSheet(s.name, s.gid)));
   const liveCount = results.filter(r => r.ok).length;
@@ -256,6 +263,7 @@ async function loadAll() {
 
 function setBadge(type, text='') {
   const el = document.getElementById('srcBadge');
+  const bar = document.getElementById('loadBar');
   const styles = {
     loading: 'background:rgba(250,204,21,.2);border:1px solid rgba(250,204,21,.4);color:#92400e',
     live:    'background:rgba(74,222,128,.2);border:1px solid rgba(74,222,128,.4);color:#166534',
@@ -263,6 +271,10 @@ function setBadge(type, text='') {
   };
   el.style.cssText = styles[type];
   el.textContent = text || (type==='loading'?'⟳ Connecting...':'');
+  if(bar) {
+    if(type==='loading') { bar.style.width='60%'; bar.style.opacity='1'; }
+    else { bar.style.width='100%'; setTimeout(()=>{ bar.style.opacity='0'; },600); }
+  }
 }
 
 // ─── FILTER ──────────────────────────────────────────────────────────────────
