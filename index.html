@@ -378,13 +378,17 @@ function computeMetrics(d) {
   var pending      = 0, outstanding = 0;
 
   d.termin.forEach(function(t) {
-    var nb = toNum(t.nilai_bersih), nr = toNum(t.nilai_retensi||0);
+    var nb = toNum(t.nilai_bersih||t.Nilai_Bersih||0);
+    var nr = toNum(t.nilai_retensi||t.Nilai_Retensi||0);
     retensi += nr;
-    if(t.status==='Lunas')       { revenue += nb; retensiCair += nr; }
-    if(t.status==='Sudah tagih')   outstanding += nb;
+    if(t.status==='Lunas')         { revenue += nb; retensiCair += nr; }
+    if(t.status==='Sudah tagih')     outstanding += nb;
   });
   d.projects.forEach(function(p){ potRev += toNum(p.nilai_kontrak); });
-  d.budget.forEach(function(b){ realBiaya += toNum(b.nilai_realisasi); rencanaBiaya += toNum(b.nilai_rencana); });
+  d.budget.forEach(function(b){ 
+    realBiaya    += toNum(b.nilai_realisasi||b.Nilai_Realisasi||0); 
+    rencanaBiaya += toNum(b.nilai_rencana||b.Nilai_Rencana||0); 
+  });
   d.pinjaman.forEach(function(p){ totalPinj += toNum(p.jumlah_pinjaman); sisaHutang += toNum(p.sisa_hutang); });
   d.transaksi.forEach(function(t){ if(t.status==='Draft') pending++; });
 
@@ -473,14 +477,22 @@ function buildPinjaman(rows) {
 function buildTrx(rows) {
   if(!rows.length) return '<p style="font-size:11px;color:var(--tx2);padding:6px">Tidak ada transaksi</p>';
   var sorted = rows.slice().sort(function(a,b){ return (b.tanggal||'').localeCompare(a.tanggal||''); }).slice(0,8);
-  var html = '<table><thead><tr><th>Tanggal</th><th>Kategori</th><th>Deskripsi</th><th style="text-align:right">Jumlah</th><th>Status</th></tr></thead><tbody>';
+  var html = '<table><thead><tr><th>Tanggal</th><th>Proyek</th><th>Keterangan</th><th style="text-align:right">Jumlah</th><th>Jenis</th></tr></thead><tbody>';
   sorted.forEach(function(t) {
+    // Support both project_id and nama_proyek column names
+    var proj = (t.nama_proyek||t.project_id||'').substring(0,16);
+    // Support both deskripsi and Deskripsi (case variants)
+    var desc = t.deskripsi||t.Deskripsi||t.Sumber||t.keterangan||'';
+    // Support jumlah column
+    var amt  = toNum(t.jumlah||t.Jumlah||0);
+    // Status or jenis
+    var jenis = t.jenis||t.Jenis||t.status||'';
     html += '<tr>'
-      +'<td style="color:var(--tx2)">'+(t.tanggal||'')+'</td>'
-      +'<td>'+(t.kategori||'')+'</td>'
-      +'<td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--tx2)">'+(t.deskripsi||t.Sumber||'')+'</td>'
-      +'<td style="text-align:right">'+idr(toNum(t.jumlah))+'</td>'
-      +'<td>'+pillHtml(t.status)+'</td>'
+      +'<td style="color:var(--tx2);white-space:nowrap">'+(t.tanggal||'')+'</td>'
+      +'<td style="color:var(--tx2);max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+proj+'</td>'
+      +'<td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--tx2)">'+desc+'</td>'
+      +'<td style="text-align:right;font-variant-numeric:tabular-nums">'+idr(amt)+'</td>'
+      +'<td>'+pillHtml(jenis)+'</td>'
       +'</tr>';
   });
   return html + '</tbody></table>';
@@ -500,10 +512,26 @@ function renderAll() {
   var warn = !isLive
     ? '<div class="warn"><span>⚠</span><div>Dashboard berjalan dalam <b>Demo Mode</b>. Pastikan spreadsheet di-set <b>Anyone with the link → Viewer</b> DAN sudah di-<b>Publish to web</b> (File → Share → Publish to web), lalu klik Refresh.</div></div>'
     : '';
+  // Debug info
+  var firstProj = (D.projects&&D.projects[0]) ? JSON.stringify(Object.keys(D.projects[0])) : 'no data';
+  var firstBudget = (D.budget&&D.budget[0]) ? JSON.stringify(Object.keys(D.budget[0])) : 'no data';
+  var firstTrx = (D.transaksi&&D.transaksi[0]) ? JSON.stringify(Object.keys(D.transaksi[0])) : 'no data';
+  var firstAkun = (D.akun&&D.akun[0]) ? JSON.stringify(Object.keys(D.akun[0])) : 'no data';
+  var debugHtml = isLive ? (
+    '<details style="margin-bottom:10px;font-size:10px;color:var(--tx2)">'
+    +'<summary style="cursor:pointer;padding:4px 8px;background:var(--gray-l);border-radius:4px">🔍 Debug kolom (klik untuk lihat)</summary>'
+    +'<div style="padding:8px;background:#f9f9f7;border:1px solid var(--border);border-radius:4px;margin-top:4px;overflow-x:auto">'
+    +'<div><b>Projects:</b> '+firstProj+'</div>'
+    +'<div><b>Budget:</b> '+firstBudget+'</div>'
+    +'<div><b>Transaksi:</b> '+firstTrx+'</div>'
+    +'<div><b>Akun:</b> '+firstAkun+'</div>'
+    +'<div><b>Proyek filtered:</b> '+d.projects.length+' | Budget: '+d.budget.length+' | Termin: '+d.termin.length+' | Trx: '+d.transaksi.length+'</div>'
+    +'</div></details>'
+  ) : '';
 
   document.getElementById('dashboard').innerHTML =
     '<div class="body">'
-    + warn
+    + warn + debugHtml
 
     // ROW 1: Financial metrics
     + '<div class="slbl">Ringkasan Finansial</div>'
@@ -557,10 +585,21 @@ function renderAll() {
     + '<div class="card"><div class="ctitle">Saldo Rekening</div>'
     + '<div class="acgrid">'
     + d.akun.map(function(a){
+        // Try all possible column name variants from gviz/tq export
+        var nama = a.Nama_Akun||a['Nama_Akun']||a.Bank||a.nama_akun||a.Akun_id||'';
+        // gviz sometimes lowercases headers or adds underscores
+        var saldoAktual = toNum(
+          a['Saldo Aktual']||a['saldo_aktual']||a['Saldo_Aktual']||
+          a.saldo_aktual||a.SaldoAktual||0
+        );
+        var saldoAwal = toNum(
+          a['Saldo Awal']||a['saldo_awal']||a['Saldo_Awal']||
+          a.saldo_awal||a.SaldoAwal||0
+        );
         return '<div class="acard">'
-          +'<div style="font-size:10px;color:var(--tx2);margin-bottom:3px">'+(a.Nama_Akun||a.Bank||a.Akun_id||'')+'</div>'
-          +'<div style="font-size:15px;font-weight:600">'+idr(toNum(a['Saldo Aktual']||a.saldo_aktual||0))+'</div>'
-          +'<div style="font-size:10px;color:var(--tx2);margin-top:2px">Awal: '+idr(toNum(a['Saldo Awal']||a.saldo_awal||0))+'</div>'
+          +'<div style="font-size:10px;color:var(--tx2);margin-bottom:3px">'+nama+'</div>'
+          +'<div style="font-size:15px;font-weight:600">'+idr(saldoAktual)+'</div>'
+          +'<div style="font-size:10px;color:var(--tx2);margin-top:2px">Awal: '+idr(saldoAwal)+'</div>'
           +'</div>';
       }).join('')
     + '</div></div></div>'
@@ -623,9 +662,12 @@ function renderCharts(d, m) {
   if(cbEl) {
     var lbs2=[], real=[], plan=[];
     d.budget.forEach(function(b){
-      lbs2.push((b.project_id||'').replace('LBT-2026-','')+':'+b.pos_biaya);
-      real.push(toNum(b.nilai_realisasi));
-      plan.push(toNum(b.nilai_rencana));
+      // Budget sheet uses nama_proyek, not project_id
+      var projShort = (b.nama_proyek||b.project_id||'').substring(0,8);
+      var pos = b.pos_biaya||b.Pos_Biaya||b.kategori||'?';
+      lbs2.push(projShort+':'+pos);
+      real.push(toNum(b.nilai_realisasi||b.Nilai_Realisasi||0));
+      plan.push(toNum(b.nilai_rencana||b.Nilai_Rencana||0));
     });
     charts.budget = new Chart(cbEl, {
       type:'bar',
@@ -635,7 +677,7 @@ function renderCharts(d, m) {
       ]},
       options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,
         plugins:{legend:{labels:{font:{size:10}}}},
-        scales:{x:{ticks:{callback:function(v){return idr(v);},font:{size:10}},grid:{color:'#F0EFEB'}},y:{ticks:{font:{size:10}}}}}
+        scales:{x:{ticks:{callback:function(v){return idr(v);},font:{size:10}},grid:{color:'#F0EFEB'}},y:{ticks:{font:{size:9}}}}}
     });
   }
 
@@ -647,7 +689,14 @@ function renderCharts(d, m) {
       lbs3.push((p.nama_proyek||'').substring(0,16));
       var rv2=0, by=0, pt2=toNum(p.nilai_kontrak), rn=0;
       d.termin.forEach(function(t){ if(t.project_id===p.project_id&&t.status==='Lunas') rv2+=toNum(t.nilai_bersih); });
-      d.budget.forEach(function(b){ if(b.project_id===p.project_id){ by+=toNum(b.nilai_realisasi); rn+=toNum(b.nilai_rencana); } });
+      d.budget.forEach(function(b){ 
+        var bname = (b.nama_proyek||'').trim();
+        var pname = (p.nama_proyek||'').trim();
+        if(b.project_id===p.project_id || bname===pname){ 
+          by+=toNum(b.nilai_realisasi||b.Nilai_Realisasi||0); 
+          rn+=toNum(b.nilai_rencana||b.Nilai_Rencana||0); 
+        } 
+      });
       makt.push(rv2 ? Math.round((rv2-by)/rv2*100) : 0);
       mpot.push(pt2 ? Math.round((pt2-rn)/pt2*100) : 0);
     });
