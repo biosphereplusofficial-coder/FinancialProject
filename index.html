@@ -202,16 +202,10 @@ function idr(n) {
   return s+'Rp '+a;
 }
 function toNum(s) {
-  if(s === null || s === undefined || s === '') return 0;
-  // Handle Indonesian/spreadsheet number formats: "348,000,000" or "Rp 348.000.000"
+  if(s === null || s === undefined || s === '' || s === '#ERROR!') return 0;
   var str = String(s).trim();
-  // Remove currency symbols and spaces
-  str = str.replace(/[Rp\s\u00a0]/g, '');
-  // If dots used as thousand separator (e.g. 348.000.000) and no decimal after last dot
-  // Remove all commas (thousand sep) then parse
-  str = str.replace(/,/g, '');
-  // Remove % sign
-  str = str.replace(/%/g, '');
+  str = str.replace(/[Rp\s\u00a0%]/g, '');  // strip Rp, spaces, %
+  str = str.replace(/,/g, '');                 // strip thousand commas: 52,186,950 → 52186950
   return parseFloat(str) || 0;
 }
 function pctStr(a, b) { return b ? Math.round(a/b*100)+'%' : '–'; }
@@ -302,9 +296,9 @@ function buildProjectFilter() {
   sel.innerHTML = '<option value="all">Semua Proyek</option>';
   (D.projects||[]).forEach(function(p) {
     var o = document.createElement('option');
-    o.value = p.project_id;
+    o.value = p.project_id;  // filter uses project_id
     o.textContent = p.nama_proyek;
-    if(p.project_id === cur) o.selected = true;
+    if(p.project_id === cur || p.nama_proyek === cur) o.selected = true;
     sel.appendChild(o);
   });
 }
@@ -334,37 +328,33 @@ function setPbar(pct) {
 function getFiltered() {
   var yr = document.getElementById('sYear').value;
   var pj = document.getElementById('sProj').value;
+
   var projects = (D.projects||[]).filter(function(p) {
-    // Support both YYYY-MM-DD and DD/MM/YYYY formats
-    var tm = p.tanggal_mulai||'', ts = p.tanggal_selesai||'';
-    var pid = p.project_id||'';
+    var tm = p.tanggal_mulai||'', ts = p.tanggal_selesai||'', pid = p.project_id||'';
+    // Support DD/MM/YYYY (16/02/2026) and YYYY-MM-DD
     var inYear = yr==='all'
-      || tm.indexOf(yr)===0        // YYYY-MM-DD starts with year
-      || tm.indexOf('/'+yr)>=0     // DD/MM/YYYY contains /YYYY
-      || tm.slice(-4)===yr         // ends with year
-      || ts.indexOf(yr)===0
-      || ts.indexOf('/'+yr)>=0
-      || ts.slice(-4)===yr
-      || pid.indexOf(yr)>=0;       // project_id like LBT-2026-001
-    var inProj = pj==='all' || pid===pj;
+      || tm.slice(-4)===yr || ts.slice(-4)===yr   // DD/MM/YYYY ends with year
+      || tm.indexOf(yr)===0 || ts.indexOf(yr)===0  // YYYY-MM-DD starts with year
+      || pid.indexOf(yr)>=0;                        // LBT-2026-001
+    var inProj = pj==='all' || pid===pj || p.nama_proyek===pj;
     return inYear && inProj;
   });
-  var pids = {};
+
+  // Build lookup by nama_proyek (primary join key — no project_id in child sheets)
   var pnames = {};
-  projects.forEach(function(p){ 
-    pids[p.project_id]=true; 
-    if(p.nama_proyek) pnames[p.nama_proyek.trim()]=true;
-  });
-  // Match by project_id OR nama_proyek (sheets may use either)
-  function matchProj(row) {
-    return pids[row.project_id] || pnames[(row.nama_proyek||'').trim()];
+  projects.forEach(function(p){ if(p.nama_proyek) pnames[p.nama_proyek.trim()]=p; });
+
+  function byName(row) {
+    var n = (row.nama_proyek||'').trim();
+    return !!pnames[n];
   }
+
   return {
-    projects: projects,
-    budget:    (D.budget||[]).filter(matchProj),
-    transaksi: (D.transaksi||[]).filter(matchProj),
-    termin:    (D.termin||[]).filter(matchProj),
-    pinjaman:  (D.pinjaman||[]).filter(matchProj),
+    projects:  projects,
+    budget:    (D.budget||[]).filter(byName),
+    transaksi: (D.transaksi||[]).filter(byName),
+    termin:    (D.termin||[]).filter(byName),
+    pinjaman:  (D.pinjaman||[]).filter(byName),
     akun:      D.akun || [],
   };
 }
@@ -373,33 +363,44 @@ function getFiltered() {
 // COMPUTE METRICS
 // ═══════════════════════════════════════════════════════════════
 function computeMetrics(d) {
-  var revenue      = 0, potRev = 0, realBiaya = 0, rencanaBiaya = 0;
-  var totalPinj    = 0, sisaHutang = 0, retensi = 0, retensiCair = 0;
-  var pending      = 0, outstanding = 0;
+  var revenue=0, potRev=0, realBiaya=0, rencanaBiaya=0;
+  var totalPinj=0, sisaHutang=0, retensi=0, retensiCair=0;
+  var pending=0, outstanding=0;
 
+  // Termin: nilai_bersih, status
   d.termin.forEach(function(t) {
-    var nb = toNum(t.nilai_bersih||t.Nilai_Bersih||0);
-    var nr = toNum(t.nilai_retensi||t.Nilai_Retensi||0);
-    retensi += nr;
-    if(t.status==='Lunas')         { revenue += nb; retensiCair += nr; }
-    if(t.status==='Sudah tagih')     outstanding += nb;
+    var nb = toNum(t.nilai_bersih);
+    if(t.status==='Lunas')       { revenue += nb; }
+    if(t.status==='Sudah tagih')   outstanding += nb;
   });
+
+  // Projects: nilai_kontrak
   d.projects.forEach(function(p){ potRev += toNum(p.nilai_kontrak); });
-  d.budget.forEach(function(b){ 
-    realBiaya    += toNum(b.nilai_realisasi||b.Nilai_Realisasi||0); 
-    rencanaBiaya += toNum(b.nilai_rencana||b.Nilai_Rencana||0); 
+
+  // Budget: nilai_rencana, nilai_realisasi
+  d.budget.forEach(function(b){
+    realBiaya    += toNum(b.nilai_realisasi);
+    rencanaBiaya += toNum(b.nilai_rencana);
   });
-  d.pinjaman.forEach(function(p){ totalPinj += toNum(p.jumlah_pinjaman); sisaHutang += toNum(p.sisa_hutang); });
-  d.transaksi.forEach(function(t){ if(t.status==='Draft') pending++; });
+
+  // Pinjaman: jumlah_pinjaman, sisa_hutang
+  d.pinjaman.forEach(function(p){
+    totalPinj  += toNum(p.jumlah_pinjaman);
+    sisaHutang += toNum(p.sisa_hutang);
+  });
+
+  // Transaksi: status (no Draft in current data — use jenis=Keluar without status as pending)
+  d.transaksi.forEach(function(t){
+    if(t.status==='Draft') pending++;
+  });
 
   return {
-    revenue: revenue, potRev: potRev,
-    realBiaya: realBiaya, rencanaBiaya: rencanaBiaya,
-    profit: revenue - realBiaya,
-    potProfit: potRev - rencanaBiaya,
-    totalPinj: totalPinj, sisaHutang: sisaHutang,
-    retensi: retensi, retensiCair: retensiCair,
-    pending: pending, outstanding: outstanding,
+    revenue:revenue, potRev:potRev,
+    realBiaya:realBiaya, rencanaBiaya:rencanaBiaya,
+    profit:revenue-realBiaya, potProfit:potRev-rencanaBiaya,
+    totalPinj:totalPinj, sisaHutang:sisaHutang,
+    retensi:retensi, retensiCair:retensiCair,
+    pending:pending, outstanding:outstanding,
     mAkt: revenue ? Math.round((revenue-realBiaya)/revenue*100) : 0,
     mPot: potRev  ? Math.round((potRev-rencanaBiaya)/potRev*100)  : 0,
   };
@@ -435,13 +436,19 @@ function buildWaterfall(m) {
 // TABLE BUILDERS
 // ═══════════════════════════════════════════════════════════════
 function buildTerminTable(rows) {
-  if(!rows.length) return '<p style="font-size:11px;color:var(--tx2);padding:6px">Tidak ada data</p>';
-  var html = '<table><thead><tr><th>Proyek</th><th>Termin</th><th style="text-align:right">Nilai Bersih</th><th>Status</th><th>Tgl Bayar</th></tr></thead><tbody>';
+  if(!rows.length) return '<p style="font-size:11px;color:var(--tx2);padding:6px">Tidak ada data termin</p>';
+  var html = '<table><thead><tr>'
+    +'<th>Proyek</th><th>No Termin</th>'
+    +'<th style="text-align:right">Nilai Tagih</th>'
+    +'<th style="text-align:right">Nilai Bersih</th>'
+    +'<th>Status</th><th>Tgl Bayar</th>'
+    +'</tr></thead><tbody>';
   rows.forEach(function(t) {
     html += '<tr>'
-      +'<td style="max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(t.nama_proyek||t.project_id||'').substring(0,18)+'</td>'
+      +'<td style="max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+(t.nama_proyek||'')+'">'+(t.nama_proyek||'').substring(0,16)+'</td>'
       +'<td>'+(t.no_termin||'')+'</td>'
-      +'<td style="text-align:right">'+idr(toNum(t.nilai_bersih))+'</td>'
+      +'<td style="text-align:right">'+idr(toNum(t.nilai_tagih))+'</td>'
+      +'<td style="text-align:right;font-weight:500">'+idr(toNum(t.nilai_bersih))+'</td>'
       +'<td>'+pillHtml(t.status)+'</td>'
       +'<td style="color:var(--tx2)">'+(t.tanggal_bayar||'–')+'</td>'
       +'</tr>';
@@ -453,46 +460,54 @@ function buildPinjaman(rows) {
   if(!rows.length) return '<p style="font-size:11px;color:var(--tx2)">Tidak ada pinjaman aktif</p>';
   var html = '';
   rows.forEach(function(p) {
-    var total = toNum(p.total_kembali)||toNum(p.jumlah_pinjaman);
-    var pct   = total ? Math.round(toNum(p.sudah_dibayar)/total*100) : 0;
+    var modal = toNum(p.jumlah_pinjaman);
+    var total = toNum(p.total_kembali) || modal;
+    var bayar = toNum(p.sudah_dibayar);
+    var sisa  = toNum(p.sisa_hutang) || (total - bayar);
+    var pct   = total ? Math.round(bayar/total*100) : 0;
     html += '<div style="margin-bottom:13px;padding-bottom:13px;border-bottom:1px solid var(--border)">'
       +'<div style="display:flex;justify-content:space-between;margin-bottom:3px">'
-      +'<span style="font-size:12px;font-weight:500">'+p.nama_investor+'</span>'+pillHtml(p.status)
+        +'<span style="font-size:12px;font-weight:500">'+(p.nama_investor||'')+'</span>'
+        +pillHtml(p.status)
       +'</div>'
       +'<div style="display:flex;justify-content:space-between;font-size:10px;color:var(--tx2);margin-bottom:5px">'
-      +'<span>Modal: <b style="color:var(--tx)">'+idr(toNum(p.jumlah_pinjaman))+'</b></span>'
-      +'<span>Sisa: <b style="color:var(--red)">'+idr(toNum(p.sisa_hutang))+'</b></span>'
-      +'<span>JT: '+(p.tanggal_jatuh_tempo||'–')+'</span>'
+        +'<span>Modal: <b style="color:var(--tx)">'+idr(modal)+'</b></span>'
+        +'<span>Sisa: <b style="color:var(--red)">'+idr(sisa)+'</b></span>'
+        +'<span>JT: '+(p.tanggal_jatuh_tempo||'–')+'</span>'
       +'</div>'
       +'<div style="display:flex;align-items:center;gap:7px">'
-      +'<div class="ptrack"><div class="pfill" style="width:'+pct+'%"></div></div>'
-      +'<span style="font-size:10px;color:var(--tx2)">'+pct+'%</span>'
+        +'<div class="ptrack"><div class="pfill" style="width:'+pct+'%"></div></div>'
+        +'<span style="font-size:10px;color:var(--tx2)">'+pct+'% terbayar</span>'
       +'</div>'
-      +'<div style="font-size:10px;color:var(--tx2);margin-top:2px">Skema: '+(p.skema||'–')+'</div>'
-      +'</div>';
+      +'<div style="font-size:10px;color:var(--tx2);margin-top:2px">'
+        +'Skema: '+(p.skema||'–')+' · Proyek: '+(p.nama_proyek||'–')
+      +'</div>'
+    +'</div>';
   });
   return html;
 }
 
 function buildTrx(rows) {
   if(!rows.length) return '<p style="font-size:11px;color:var(--tx2);padding:6px">Tidak ada transaksi</p>';
-  var sorted = rows.slice().sort(function(a,b){ return (b.tanggal||'').localeCompare(a.tanggal||''); }).slice(0,8);
-  var html = '<table><thead><tr><th>Tanggal</th><th>Proyek</th><th>Keterangan</th><th style="text-align:right">Jumlah</th><th>Jenis</th></tr></thead><tbody>';
+  // Sort by tanggal desc, take 10 latest
+  var sorted = rows.slice().sort(function(a,b){
+    return (b.tanggal||'').localeCompare(a.tanggal||'');
+  }).slice(0,10);
+  var html = '<table><thead><tr>'
+    +'<th>Tanggal</th><th>Proyek</th><th>Kategori</th>'
+    +'<th>Keterangan</th>'
+    +'<th style="text-align:right">Jumlah</th><th>Jenis</th>'
+    +'</tr></thead><tbody>';
   sorted.forEach(function(t) {
-    // Support both project_id and nama_proyek column names
-    var proj = (t.nama_proyek||t.project_id||'').substring(0,16);
-    // Support both deskripsi and Deskripsi (case variants)
-    var desc = t.deskripsi||t.Deskripsi||t.Sumber||t.keterangan||'';
-    // Support jumlah column
-    var amt  = toNum(t.jumlah||t.Jumlah||0);
-    // Status or jenis
-    var jenis = t.jenis||t.Jenis||t.status||'';
+    var jenis = t.jenis||'';
+    var jClass = jenis==='Masuk' ? 'pg' : jenis==='Keluar' ? 'pr' : 'pgr';
     html += '<tr>'
       +'<td style="color:var(--tx2);white-space:nowrap">'+(t.tanggal||'')+'</td>'
-      +'<td style="color:var(--tx2);max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+proj+'</td>'
-      +'<td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--tx2)">'+desc+'</td>'
-      +'<td style="text-align:right;font-variant-numeric:tabular-nums">'+idr(amt)+'</td>'
-      +'<td>'+pillHtml(jenis)+'</td>'
+      +'<td style="color:var(--tx2);max-width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+(t.nama_proyek||'')+'">'+(t.nama_proyek||'').substring(0,12)+'</td>'
+      +'<td style="white-space:nowrap">'+(t.kategori||'')+'</td>'
+      +'<td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--tx2)" title="'+(t.deskripsi||'')+'">'+(t.deskripsi||t.Sumber||'')+'</td>'
+      +'<td style="text-align:right;font-variant-numeric:tabular-nums">'+idr(toNum(t.jumlah))+'</td>'
+      +'<td><span class="pill '+jClass+'">'+jenis+'</span></td>'
       +'</tr>';
   });
   return html + '</tbody></table>';
@@ -585,21 +600,18 @@ function renderAll() {
     + '<div class="card"><div class="ctitle">Saldo Rekening</div>'
     + '<div class="acgrid">'
     + d.akun.map(function(a){
-        // Try all possible column name variants from gviz/tq export
-        var nama = a.Nama_Akun||a['Nama_Akun']||a.Bank||a.nama_akun||a.Akun_id||'';
-        // gviz sometimes lowercases headers or adds underscores
-        var saldoAktual = toNum(
-          a['Saldo Aktual']||a['saldo_aktual']||a['Saldo_Aktual']||
-          a.saldo_aktual||a.SaldoAktual||0
-        );
-        var saldoAwal = toNum(
-          a['Saldo Awal']||a['saldo_awal']||a['Saldo_Awal']||
-          a.saldo_awal||a.SaldoAwal||0
-        );
+        // Exact columns: Akun_id, Nama_Akun, Saldo Awal, Saldo Aktual
+        var nama = a['Nama_Akun'] || a.Nama_Akun || a.Akun_id || '';
+        var aktual = toNum(a['Saldo Aktual'] || a.Saldo_Aktual || 0);
+        var awal   = toNum(a['Saldo Awal']   || a.Saldo_Awal   || 0);
+        var diff = aktual - awal;
+        var diffColor = diff >= 0 ? 'var(--green2)' : 'var(--red)';
         return '<div class="acard">'
           +'<div style="font-size:10px;color:var(--tx2);margin-bottom:3px">'+nama+'</div>'
-          +'<div style="font-size:15px;font-weight:600">'+idr(saldoAktual)+'</div>'
-          +'<div style="font-size:10px;color:var(--tx2);margin-top:2px">Awal: '+idr(saldoAwal)+'</div>'
+          +'<div style="font-size:15px;font-weight:600">'+idr(aktual)+'</div>'
+          +'<div style="font-size:10px;color:'+diffColor+';margin-top:2px">'
+            +(diff>=0?'▲ +':'▼ ')+idr(diff)+' dari awal'
+          +'</div>'
           +'</div>';
       }).join('')
     + '</div></div></div>'
@@ -640,8 +652,10 @@ function renderCharts(d, m) {
     var lbs=[], rv=[], pt=[];
     d.projects.forEach(function(p){
       lbs.push((p.nama_proyek||'').substring(0,16));
-      var r=0;
-      d.termin.forEach(function(t){ if(t.project_id===p.project_id&&t.status==='Lunas') r+=toNum(t.nilai_bersih); });
+      var r=0, pn=(p.nama_proyek||'').trim();
+      d.termin.forEach(function(t){
+        if((t.nama_proyek||'').trim()===pn && t.status==='Lunas') r+=toNum(t.nilai_bersih);
+      });
       rv.push(r);
       pt.push(toNum(p.nilai_kontrak));
     });
@@ -662,12 +676,11 @@ function renderCharts(d, m) {
   if(cbEl) {
     var lbs2=[], real=[], plan=[];
     d.budget.forEach(function(b){
-      // Budget sheet uses nama_proyek, not project_id
-      var projShort = (b.nama_proyek||b.project_id||'').substring(0,8);
-      var pos = b.pos_biaya||b.Pos_Biaya||b.kategori||'?';
-      lbs2.push(projShort+':'+pos);
-      real.push(toNum(b.nilai_realisasi||b.Nilai_Realisasi||0));
-      plan.push(toNum(b.nilai_rencana||b.Nilai_Rencana||0));
+      var projShort = (b.nama_proyek||'').substring(0,10);
+      var pos = b.pos_biaya||'?';  // exact column name from PDF
+      lbs2.push(projShort+' · '+pos);
+      real.push(toNum(b.nilai_realisasi));  // exact column name
+      plan.push(toNum(b.nilai_rencana));    // exact column name
     });
     charts.budget = new Chart(cbEl, {
       type:'bar',
@@ -688,14 +701,15 @@ function renderCharts(d, m) {
     d.projects.forEach(function(p){
       lbs3.push((p.nama_proyek||'').substring(0,16));
       var rv2=0, by=0, pt2=toNum(p.nilai_kontrak), rn=0;
-      d.termin.forEach(function(t){ if(t.project_id===p.project_id&&t.status==='Lunas') rv2+=toNum(t.nilai_bersih); });
-      d.budget.forEach(function(b){ 
-        var bname = (b.nama_proyek||'').trim();
-        var pname = (p.nama_proyek||'').trim();
-        if(b.project_id===p.project_id || bname===pname){ 
-          by+=toNum(b.nilai_realisasi||b.Nilai_Realisasi||0); 
-          rn+=toNum(b.nilai_rencana||b.Nilai_Rencana||0); 
-        } 
+      var pn2 = (p.nama_proyek||'').trim();
+      d.termin.forEach(function(t){
+        if((t.nama_proyek||'').trim()===pn2 && t.status==='Lunas') rv2+=toNum(t.nilai_bersih);
+      });
+      d.budget.forEach(function(b){
+        if((b.nama_proyek||'').trim()===pn2){
+          by+=toNum(b.nilai_realisasi);
+          rn+=toNum(b.nilai_rencana);
+        }
       });
       makt.push(rv2 ? Math.round((rv2-by)/rv2*100) : 0);
       mpot.push(pt2 ? Math.round((pt2-rn)/pt2*100) : 0);
