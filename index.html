@@ -108,7 +108,8 @@ footer a{color:var(--green)}
   <label>Tahun</label>
   <select id="sYear" onchange="renderAll()">
     <option value="all">Semua</option>
-    <option value="2025" selected>2025</option>
+    <option value="2025">2025</option>
+    <option value="2026" selected>2026</option>
     <option value="2026">2026</option>
   </select>
   <label>Proyek</label>
@@ -202,7 +203,15 @@ function idr(n) {
 }
 function toNum(s) {
   if(s === null || s === undefined || s === '') return 0;
-  var str = String(s).replace(/[^0-9.\-]/g, '');
+  // Handle Indonesian/spreadsheet number formats: "348,000,000" or "Rp 348.000.000"
+  var str = String(s).trim();
+  // Remove currency symbols and spaces
+  str = str.replace(/[Rp\s\u00a0]/g, '');
+  // If dots used as thousand separator (e.g. 348.000.000) and no decimal after last dot
+  // Remove all commas (thousand sep) then parse
+  str = str.replace(/,/g, '');
+  // Remove % sign
+  str = str.replace(/%/g, '');
   return parseFloat(str) || 0;
 }
 function pctStr(a, b) { return b ? Math.round(a/b*100)+'%' : '–'; }
@@ -326,18 +335,36 @@ function getFiltered() {
   var yr = document.getElementById('sYear').value;
   var pj = document.getElementById('sProj').value;
   var projects = (D.projects||[]).filter(function(p) {
-    var inYear = yr==='all' || (p.tanggal_mulai||'').indexOf(yr)===0 || (p.tanggal_selesai||'').indexOf(yr)===0;
-    var inProj = pj==='all' || p.project_id===pj;
+    // Support both YYYY-MM-DD and DD/MM/YYYY formats
+    var tm = p.tanggal_mulai||'', ts = p.tanggal_selesai||'';
+    var pid = p.project_id||'';
+    var inYear = yr==='all'
+      || tm.indexOf(yr)===0        // YYYY-MM-DD starts with year
+      || tm.indexOf('/'+yr)>=0     // DD/MM/YYYY contains /YYYY
+      || tm.slice(-4)===yr         // ends with year
+      || ts.indexOf(yr)===0
+      || ts.indexOf('/'+yr)>=0
+      || ts.slice(-4)===yr
+      || pid.indexOf(yr)>=0;       // project_id like LBT-2026-001
+    var inProj = pj==='all' || pid===pj;
     return inYear && inProj;
   });
   var pids = {};
-  projects.forEach(function(p){ pids[p.project_id]=true; });
+  var pnames = {};
+  projects.forEach(function(p){ 
+    pids[p.project_id]=true; 
+    if(p.nama_proyek) pnames[p.nama_proyek.trim()]=true;
+  });
+  // Match by project_id OR nama_proyek (sheets may use either)
+  function matchProj(row) {
+    return pids[row.project_id] || pnames[(row.nama_proyek||'').trim()];
+  }
   return {
     projects: projects,
-    budget:    (D.budget||[]).filter(function(b){ return pids[b.project_id]; }),
-    transaksi: (D.transaksi||[]).filter(function(t){ return pids[t.project_id]; }),
-    termin:    (D.termin||[]).filter(function(t){ return pids[t.project_id]; }),
-    pinjaman:  (D.pinjaman||[]).filter(function(p){ return pids[p.project_id]; }),
+    budget:    (D.budget||[]).filter(matchProj),
+    transaksi: (D.transaksi||[]).filter(matchProj),
+    termin:    (D.termin||[]).filter(matchProj),
+    pinjaman:  (D.pinjaman||[]).filter(matchProj),
     akun:      D.akun || [],
   };
 }
