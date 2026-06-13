@@ -687,7 +687,11 @@ function renderAll() {
     + '</div>'; // end .body
 
   // Render charts after DOM update
-  setTimeout(function(){ renderCharts(d, m); }, 80);
+  setTimeout(function(){
+    renderCharts(d, m);
+    var bb = document.getElementById('budgetBars');
+    if(bb) bb.innerHTML = buildBudgetBars(d.budget);
+  }, 80);
 }
 
 // ═══════════════════════════════════════════════════════════════
