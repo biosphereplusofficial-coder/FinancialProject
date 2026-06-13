@@ -749,13 +749,15 @@ function renderCharts(d, m) {
   // Margin bar
   var cmEl = document.getElementById('cMargin');
   if(cmEl) {
-    var lbs3=[], makt=[], mpot=[];
+    var lbs3=[], profAkt=[], profPot=[], pctAkt=[], pctPot=[];
     d.projects.forEach(function(p){
       lbs3.push(get(p,'nama_proyek').substring(0,16));
-      var rv2=0, by=0, pt2=toNum(p.nilai_kontrak), rn=0;
-      var pn2 = get(p,'nama_proyek').trim();
+      var rv2=0,by=0,rn=0;
+      var pt2=toNum(get(p,'nilai_kontrak'));
+      var pn2=get(p,'nama_proyek').trim();
       d.termin.forEach(function(t){
-        if(get(t,'nama_proyek').trim()===pn2 && get(t,'status')==='Lunas') rv2+=toNum(get(t,'nilai_bersih'));
+        if(get(t,'nama_proyek').trim()===pn2&&get(t,'status')==='Lunas')
+          rv2+=toNum(get(t,'nilai_bersih'));
       });
       d.budget.forEach(function(b){
         if(get(b,'nama_proyek').trim()===pn2){
@@ -763,18 +765,46 @@ function renderCharts(d, m) {
           rn+=toNum(get(b,'nilai_rencana'));
         }
       });
-      makt.push(rv2 ? Math.round((rv2-by)/rv2*100) : 0);
-      mpot.push(pt2 ? Math.round((pt2-rn)/pt2*100) : 0);
+      profAkt.push(rv2-by);
+      profPot.push(pt2-rn);
+      pctAkt.push(rv2?Math.round((rv2-by)/rv2*100):0);
+      pctPot.push(pt2?Math.round((pt2-rn)/pt2*100):0);
     });
-    charts.margin = new Chart(cmEl, {
+    charts.margin = new Chart(cmEl,{
       type:'bar',
       data:{labels:lbs3,datasets:[
-        {label:'Margin Aktual %',data:makt,backgroundColor:'#534AB7',borderRadius:4},
-        {label:'Margin Potensi %',data:mpot,backgroundColor:'rgba(184,182,169,.45)',borderRadius:4}
+        {label:'Profit Aktual',data:profAkt,backgroundColor:'#534AB7',borderRadius:4},
+        {label:'Potensi Profit',data:profPot,backgroundColor:'rgba(184,182,169,.45)',borderRadius:4}
       ]},
       options:{responsive:true,maintainAspectRatio:false,
-        plugins:{legend:{labels:{font:{size:10}}}},
-        scales:{y:{ticks:{callback:function(v){return v+'%';},font:{size:10}},grid:{color:'#F0EFEB'}},x:{ticks:{font:{size:10}}}}}
+        plugins:{
+          legend:{labels:{font:{size:10}}},
+          tooltip:{callbacks:{label:function(c){return ' '+c.dataset.label+': '+idr(c.raw);}}}
+        },
+        scales:{
+          y:{ticks:{callback:function(v){return idr(v);},font:{size:10}},grid:{color:'#F0EFEB'}},
+          x:{ticks:{font:{size:10}}}
+        }
+      },
+      plugins:[{
+        id:'pctLabel',
+        afterDatasetsDraw:function(chart){
+          var ctx2=chart.ctx;
+          [pctAkt,pctPot].forEach(function(pcts,di){
+            var meta=chart.getDatasetMeta(di);
+            if(meta.hidden) return;
+            meta.data.forEach(function(bar,i){
+              if(!pcts[i]) return;
+              ctx2.save();
+              ctx2.font='bold 10px system-ui';
+              ctx2.fillStyle=pcts[i]>=0?'#27500A':'#A32D2D';
+              ctx2.textAlign='center';
+              ctx2.fillText(pcts[i]+'%',bar.x,bar.y-4);
+              ctx2.restore();
+            });
+          });
+        }
+      }]
     });
   }
 }
