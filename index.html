@@ -176,11 +176,11 @@ const DEMO = {
     {pinjaman_id:'INV-002',nama_investor:'Bu Sari Kusuma',jumlah_pinjaman:'200000000',project_id:'LBT-2026-002',skema:'Bunga flat',nilai_return:'24000000',total_kembali:'224000000',tanggal_jatuh_tempo:'2025-09-10',sudah_dibayar:'0',sisa_hutang:'224000000',status:'Aktif'},
   ],
   akun:[
-    {Akun_id:'Rek_001',Nama_Akun:'BCA Kg Bud','Saldo Awal':'500000','Saldo Aktual':'500000'},
-    {Akun_id:'Rek_002',Nama_Akun:'Mandiri Sut','Saldo Awal':'500000','Saldo Aktual':'200000'},
-    {Akun_id:'Rek_003',Nama_Akun:'BCA Rik','Saldo Awal':'500000','Saldo Aktual':'5000000'},
-    {Akun_id:'Rek_004',Nama_Akun:'Jago Rik Reklame','Saldo Awal':'500000','Saldo Aktual':'1000000'},
-    {Akun_id:'Rek_005',Nama_Akun:'Jago Rik Topo','Saldo Awal':'500000','Saldo Aktual':'1000000'},
+    {akun_id:'Rek_001',nama_akun:'BCA Kg Bud',saldo_awal:'500000',saldo_aktual:'500000'},
+    {akun_id:'Rek_002',nama_akun:'Mandiri Sut',saldo_awal:'500000',saldo_aktual:'200000'},
+    {akun_id:'Rek_003',nama_akun:'BCA Rik',saldo_awal:'500000',saldo_aktual:'5000000'},
+    {akun_id:'Rek_004',nama_akun:'Jago Rik Reklame',saldo_awal:'500000',saldo_aktual:'1000000'},
+    {akun_id:'Rek_005',nama_akun:'Jago Rik Topo',saldo_awal:'500000',saldo_aktual:'1000000'},
   ],
 };
 
@@ -561,21 +561,8 @@ function renderAll() {
     ? '<div class="warn"><span>⚠</span><div>Dashboard berjalan dalam <b>Demo Mode</b>. Pastikan spreadsheet di-set <b>Anyone with the link → Viewer</b> DAN sudah di-<b>Publish to web</b> (File → Share → Publish to web), lalu klik Refresh.</div></div>'
     : '';
   // Debug info
-  var firstProj = (D.projects&&D.projects[0]) ? JSON.stringify(Object.keys(D.projects[0])) : 'no data';
-  var firstBudget = (D.budget&&D.budget[0]) ? JSON.stringify(Object.keys(D.budget[0])) : 'no data';
-  var firstTrx = (D.transaksi&&D.transaksi[0]) ? JSON.stringify(Object.keys(D.transaksi[0])) : 'no data';
-  var firstAkun = (D.akun&&D.akun[0]) ? JSON.stringify(Object.keys(D.akun[0])) : 'no data';
-  var debugHtml = isLive ? (
-    '<details style="margin-bottom:10px;font-size:10px;color:var(--tx2)">'
-    +'<summary style="cursor:pointer;padding:4px 8px;background:var(--gray-l);border-radius:4px">🔍 Debug kolom (klik untuk lihat)</summary>'
-    +'<div style="padding:8px;background:#f9f9f7;border:1px solid var(--border);border-radius:4px;margin-top:4px;overflow-x:auto">'
-    +'<div><b>Projects:</b> '+firstProj+'</div>'
-    +'<div><b>Budget:</b> '+firstBudget+'</div>'
-    +'<div><b>Transaksi:</b> '+firstTrx+'</div>'
-    +'<div><b>Akun:</b> '+firstAkun+'</div>'
-    +'<div><b>Proyek filtered:</b> '+d.projects.length+' | Budget: '+d.budget.length+' | Termin: '+d.termin.length+' | Trx: '+d.transaksi.length+'</div>'
-    +'</div></details>'
-  ) : '';
+  // Debug panel removed after column names confirmed
+  var debugHtml = '';
 
   document.getElementById('dashboard').innerHTML =
     '<div class="body">'
