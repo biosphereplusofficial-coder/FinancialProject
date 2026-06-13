@@ -205,8 +205,12 @@ function idr(n) {
 function toNum(s) {
   if(s === null || s === undefined || s === '' || s === '#ERROR!') return 0;
   var str = String(s).trim();
-  str = str.replace(/[Rp\s\u00a0%]/g, '');  // strip Rp, spaces, %
-  str = str.replace(/,/g, '');                 // strip thousand commas: 52,186,950 → 52186950
+  // Strip currency prefix "Rp" (with or without space/dot)
+  str = str.replace(/^Rp\.?\s*/i, '');
+  // Strip thousand separators (commas) and spaces
+  str = str.replace(/[,\s\u00a0]/g, '');
+  // Strip % sign
+  str = str.replace(/%/g, '');
   return parseFloat(str) || 0;
 }
 function pctStr(a, b) { return b ? Math.round(a/b*100)+'%' : '–'; }
@@ -382,12 +386,22 @@ function getFiltered() {
     return !!pnames[n];
   }
 
+  // pinjaman.nama_proyek contains project_id (e.g. "LBT-2025-001"), not nama_proyek
+  // build project_id lookup too
+  var pidMap = {};
+  projects.forEach(function(p){ var pid=get(p,'project_id'); if(pid) pidMap[pid.trim()]=true; });
+
+  function byNameOrId(row) {
+    var n  = (get(row,'nama_proyek')||'').trim();
+    return !!pnames[n] || !!pidMap[n];
+  }
+
   return {
     projects:  projects,
     budget:    (D.budget||[]).filter(byName),
     transaksi: (D.transaksi||[]).filter(byName),
     termin:    (D.termin||[]).filter(byName),
-    pinjaman:  (D.pinjaman||[]).filter(byName),
+    pinjaman:  (D.pinjaman||[]).filter(byNameOrId),
     akun:      D.akun || [],
   };
 }
@@ -562,33 +576,7 @@ function renderAll() {
     ? '<div class="warn"><span>⚠</span><div>Dashboard berjalan dalam <b>Demo Mode</b>. Pastikan spreadsheet di-set <b>Anyone with the link → Viewer</b> DAN sudah di-<b>Publish to web</b> (File → Share → Publish to web), lalu klik Refresh.</div></div>'
     : '';
   // Debug info
-  // Live column inspector — shows EXACT keys received from gviz
-  function sheetSample(name) {
-    var arr = D[name];
-    if(!arr||!arr.length) return name+': no data';
-    var row = arr[0];
-    // Show original keys (before normalization) and first values
-    var keys = Object.keys(row).filter(function(k){
-      // skip normalized duplicates — show only originals (contain uppercase or space)
-      return true;
-    }).slice(0,12);
-    return '<b>'+name+':</b> ['+keys.map(function(k){
-      return k+'=<i>'+(String(row[k]||'').substring(0,10))+'</i>';
-    }).join(' | ')+']';
-  }
-  var debugHtml = isLive ? (
-    '<details style="margin-bottom:12px;font-size:11px">'
-    +'<summary style="cursor:pointer;padding:5px 10px;background:#EAF3DE;border-radius:5px;color:#27500A;font-weight:600">🔍 Debug: klik lihat nama kolom aktual dari Sheets</summary>'
-    +'<div style="padding:10px;background:#f9f9f7;border:1px solid #ddd;border-radius:5px;margin-top:4px;overflow-x:auto;font-family:monospace;font-size:10px;line-height:1.8">'
-    +'<div>'+sheetSample('projects')+'</div>'
-    +'<div>'+sheetSample('budget')+'</div>'
-    +'<div>'+sheetSample('transaksi')+'</div>'
-    +'<div>'+sheetSample('termin')+'</div>'
-    +'<div>'+sheetSample('pinjaman')+'</div>'
-    +'<div>'+sheetSample('akun')+'</div>'
-    +'<div style="margin-top:6px;color:#633806"><b>Filtered:</b> projects='+d.projects.length+' budget='+d.budget.length+' termin='+d.termin.length+' trx='+d.transaksi.length+' pinj='+d.pinjaman.length+' akun='+d.akun.length+'</div>'
-    +'</div></details>'
-  ) : '';
+  var debugHtml = '';
 
   document.getElementById('dashboard').innerHTML =
     '<div class="body">'
