@@ -913,11 +913,20 @@ function buildProjectFinance(d) {
       }
     });
 
-    // Transaksi keluar yang sudah benar2 dibayarkan (dari sheet Transaksi, jenis=Keluar, exclude transfer antar rekening sendiri)
-    var transaksiKeluar = 0;
+    // Transaksi keluar yang sudah benar2 dibayarkan (dari sheet Transaksi, jenis=Keluar)
+    // Trim semua nilai untuk hindari whitespace mismatch dari gviz export
+    var transaksiKeluar = 0, transaksiMasuk = 0;
     d.transaksi.forEach(function(t){
-      if(get(t,'nama_proyek').trim()===pn && get(t,'jenis')==='Keluar' && get(t,'kategori')!=='Transfer') {
-        transaksiKeluar += toNum(get(t,'jumlah'));
+      var tProj  = get(t,'nama_proyek').trim();
+      var tJenis = get(t,'jenis').trim();
+      var tKat   = get(t,'kategori').trim();
+      if(tProj===pn) {
+        if(tJenis==='Keluar' && tKat!=='Transfer') {
+          transaksiKeluar += toNum(get(t,'jumlah'));
+        }
+        if(tJenis==='Masuk' && tKat!=='Transfer') {
+          transaksiMasuk += toNum(get(t,'jumlah'));
+        }
       }
     });
 
@@ -978,7 +987,14 @@ function renderAll() {
     ? '<div class="warn"><span>⚠</span><div>Dashboard berjalan dalam <b>Demo Mode</b>. Pastikan spreadsheet di-set <b>Anyone with the link → Viewer</b> DAN sudah di-<b>Publish to web</b> (File → Share → Publish to web), lalu klik Refresh.</div></div>'
     : '';
   // Debug info
+  // TEMP DEBUG: cek transaksi Reklame Pulau Batam
   var debugHtml = '';
+  if(isLive && window.location.search.indexOf('debug')>=0) {
+    var sample = d.transaksi.slice(0,5).map(function(t){
+      return 'proj=['+get(t,'nama_proyek')+'] jenis=['+get(t,'jenis')+'] kat=['+get(t,'kategori')+'] jml=['+get(t,'jumlah')+'] toNum='+toNum(get(t,'jumlah'));
+    }).join('<br>');
+    debugHtml = '<div style="background:#fffbe6;border:1px solid #f0d000;padding:10px;margin-bottom:10px;font-size:10px;font-family:monospace">'+sample+'</div>';
+  }
 
   document.getElementById('dashboard').innerHTML =
     '<div class="body">'
