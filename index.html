@@ -101,6 +101,7 @@ footer a{color:var(--green)}
     <span id="lupd"></span>
     <span id="countdown">⟳ 30s</span>
     <button class="rbtn" onclick="manualRefresh()">&#8635; Refresh</button>
+    <button class="rbtn" style="background:rgba(255,255,255,.22)" onclick="openInputModal()">+ Input Transaksi</button>
   </div>
 </div>
 
@@ -1400,5 +1401,348 @@ window.addEventListener('DOMContentLoaded', function() {
   loadAll().then(function(){ startAutoRefresh(); });
 });
 </script>
+<!-- ═══════════════════════════════════════════════════════════════
+     INPUT TRANSAKSI MODAL
+     ═══════════════════════════════════════════════════════════════ -->
+<div id="inputModalOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1000;align-items:center;justify-content:center;padding:16px">
+  <div style="background:#fff;border-radius:12px;max-width:480px;width:100%;max-height:90vh;overflow-y:auto;box-shadow:0 8px 30px rgba(0,0,0,.25)">
+
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:16px 18px;border-bottom:1px solid var(--border);position:sticky;top:0;background:#fff;border-radius:12px 12px 0 0">
+      <h3 style="font-size:14px;color:var(--green);margin:0">📝 Input Transaksi</h3>
+      <button onclick="closeInputModal()" style="border:none;background:none;font-size:18px;cursor:pointer;color:var(--tx2);line-height:1">&times;</button>
+    </div>
+
+    <div style="padding:16px 18px">
+
+      <!-- SETUP URL (tampil hanya jika belum diset) -->
+      <div id="setupUrlBox" style="display:none">
+        <div style="background:#FFFBEB;border:1px solid #FDE68A;border-radius:8px;padding:12px 14px;margin-bottom:12px;font-size:11px;color:#92400E">
+          Form ini perlu URL Apps Script Web App yang sudah kamu deploy (lihat README:
+          <i>Deploy → New deployment → Web app → Who has access: Anyone</i>).
+          Paste URL-nya di bawah, sekali saja (disimpan di browser ini).
+        </div>
+        <div style="margin-bottom:8px">
+          <input type="text" id="scriptUrlInput" placeholder="https://script.google.com/macros/s/XXXXX/exec"
+            style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px">
+        </div>
+        <button onclick="saveScriptUrl()" style="width:100%;padding:9px;background:var(--green);color:#fff;border:none;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer">Simpan & Lanjutkan</button>
+      </div>
+
+      <!-- FORM (tampil setelah URL diset) -->
+      <div id="formBox" style="display:none">
+
+        <div id="alertBox" style="display:none;padding:10px 12px;border-radius:6px;font-size:12px;margin-bottom:12px"></div>
+
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:16px">
+          <div class="itype-tab active" data-type="masuk" style="padding:9px 4px;text-align:center;border:1.5px solid var(--border);border-radius:8px;cursor:pointer;font-size:11px;font-weight:600;color:var(--tx2)">↓ Masuk</div>
+          <div class="itype-tab" data-type="keluar" style="padding:9px 4px;text-align:center;border:1.5px solid var(--border);border-radius:8px;cursor:pointer;font-size:11px;font-weight:600;color:var(--tx2)">↑ Keluar</div>
+          <div class="itype-tab" data-type="transfer" style="padding:9px 4px;text-align:center;border:1.5px solid var(--border);border-radius:8px;cursor:pointer;font-size:11px;font-weight:600;color:var(--tx2)">⇄ Transfer</div>
+          <div class="itype-tab" data-type="pinjam" style="padding:9px 4px;text-align:center;border:1.5px solid var(--border);border-radius:8px;cursor:pointer;font-size:11px;font-weight:600;color:var(--tx2)">🏦 Pinjam</div>
+          <div class="itype-tab" data-type="lainnya" style="padding:9px 4px;text-align:center;border:1.5px solid var(--border);border-radius:8px;cursor:pointer;font-size:11px;font-weight:600;color:var(--tx2)">⋯ Lainnya</div>
+        </div>
+
+        <form id="inputFormEl">
+
+          <div id="ipanel-masuk" class="ipanel">
+            <div class="ifield"><label>Tanggal</label><input type="date" name="tanggal" required></div>
+            <div class="ifield"><label>Proyek</label><select name="nama_proyek" class="i-proyek"><option value="">— Tanpa proyek spesifik —</option></select></div>
+            <div class="ifield"><label>Rekening Tujuan</label><select name="nama_akun" class="i-akun" required></select></div>
+            <div class="ifield"><label>Kategori</label>
+              <select name="kategori"><option value="Termin">Termin</option><option value="Pinjaman">Pinjaman</option><option value="Lainnya">Lainnya</option></select>
+            </div>
+            <div class="ifield"><label>Keterangan</label><input type="text" name="deskripsi" placeholder="contoh: Termin 1 cair"></div>
+            <div class="ifield"><label>Jumlah (Rp)</label><input type="number" name="jumlah" min="0" step="1" required></div>
+          </div>
+
+          <div id="ipanel-keluar" class="ipanel" style="display:none">
+            <div class="ifield"><label>Tanggal</label><input type="date" name="tanggal" required></div>
+            <div class="ifield"><label>Proyek</label><select name="nama_proyek" class="i-proyek"><option value="">— Tanpa proyek spesifik —</option></select></div>
+            <div class="ifield"><label>Rekening Sumber</label><select name="nama_akun" class="i-akun" required></select></div>
+            <div class="ifield"><label>Kategori / Pos Biaya</label><select name="kategori" class="i-kategori"></select></div>
+            <div class="ifield"><label>Keterangan</label><input type="text" name="deskripsi" placeholder="contoh: Fee surveyor"></div>
+            <div class="ifield"><label>Jumlah (Rp)</label><input type="number" name="jumlah" min="0" step="1" required></div>
+          </div>
+
+          <div id="ipanel-transfer" class="ipanel" style="display:none">
+            <div style="display:flex;gap:8px;margin-bottom:12px">
+              <div class="itoggle active" data-mode="rekening" style="flex:1;padding:7px;text-align:center;border:1px solid var(--border);border-radius:6px;cursor:pointer;font-size:11px;font-weight:500">Antar Rekening Sendiri</div>
+              <div class="itoggle" data-mode="talangan" style="flex:1;padding:7px;text-align:center;border:1px solid var(--border);border-radius:6px;cursor:pointer;font-size:11px;font-weight:500">Dana Talangan Antar Proyek</div>
+            </div>
+            <div id="itransfer-rekening">
+              <div class="ifield"><label>Tanggal</label><input type="date" name="t_tanggal" required></div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+                <div class="ifield"><label>Rekening Asal</label><select name="t_akun_asal" class="i-akun" required></select></div>
+                <div class="ifield"><label>Rekening Tujuan</label><select name="t_akun_tujuan" class="i-akun" required></select></div>
+              </div>
+              <div class="ifield"><label>Proyek terkait (opsional)</label><select name="t_nama_proyek" class="i-proyek"><option value="">— Tidak terkait proyek —</option></select></div>
+              <div class="ifield"><label>Keterangan</label><input type="text" name="t_deskripsi"></div>
+              <div class="ifield"><label>Jumlah (Rp)</label><input type="number" name="t_jumlah" min="0" step="1" required></div>
+            </div>
+            <div id="itransfer-talangan" style="display:none">
+              <div class="ifield"><label>Tanggal</label><input type="date" name="tl_tanggal" required></div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+                <div class="ifield"><label>Proyek Pemberi</label><select name="tl_proyek_pemberi" class="i-proyek" required></select></div>
+                <div class="ifield"><label>Proyek Penerima</label><select name="tl_proyek_penerima" class="i-proyek" required></select></div>
+              </div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+                <div class="ifield"><label>Rekening Asal</label><select name="tl_akun_asal" class="i-akun"></select></div>
+                <div class="ifield"><label>Rekening Tujuan</label><select name="tl_akun_tujuan" class="i-akun"></select></div>
+              </div>
+              <div class="ifield"><label>Keterangan</label><input type="text" name="tl_deskripsi"></div>
+              <div class="ifield"><label>Jumlah (Rp)</label><input type="number" name="tl_jumlah" min="0" step="1" required></div>
+            </div>
+          </div>
+
+          <div id="ipanel-pinjam" class="ipanel" style="display:none">
+            <div class="ifield"><label>Tanggal Cair</label><input type="date" name="p_tanggal_cair" required></div>
+            <div class="ifield"><label>Nama Investor</label><input type="text" name="p_nama_investor" required></div>
+            <div class="ifield"><label>Proyek Terkait</label><select name="p_proyek" class="i-proyek" required></select></div>
+            <div class="ifield"><label>Rekening Penerima</label><select name="p_akun_penerima" class="i-akun"></select></div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+              <div class="ifield"><label>Jumlah Pinjaman (Rp)</label><input type="number" name="p_jumlah" min="0" step="1" required></div>
+              <div class="ifield"><label>Return (%)</label><input type="number" name="p_return_pct" min="0" step="0.1"></div>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+              <div class="ifield"><label>Skema</label>
+                <select name="p_skema"><option value="Bagi hasil">Bagi hasil</option><option value="Bunga flat">Bunga flat</option><option value="Pinjam">Pinjam (tanpa bunga)</option></select>
+              </div>
+              <div class="ifield"><label>Jatuh Tempo</label><input type="date" name="p_jatuh_tempo"></div>
+            </div>
+          </div>
+
+          <div id="ipanel-lainnya" class="ipanel" style="display:none">
+            <div class="ifield"><label>Tanggal</label><input type="date" name="l_tanggal" required></div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+              <div class="ifield"><label>Jenis</label><select name="l_jenis"><option value="Masuk">Masuk</option><option value="Keluar">Keluar</option></select></div>
+              <div class="ifield"><label>Rekening</label><select name="l_akun" class="i-akun" required></select></div>
+            </div>
+            <div class="ifield"><label>Proyek</label><select name="l_proyek" class="i-proyek"><option value="">— Tanpa proyek spesifik —</option></select></div>
+            <div class="ifield"><label>Kategori (bebas isi)</label><input type="text" name="l_kategori"></div>
+            <div class="ifield"><label>Keterangan</label><input type="text" name="l_deskripsi"></div>
+            <div class="ifield"><label>Jumlah (Rp)</label><input type="number" name="l_jumlah" min="0" step="1" required></div>
+          </div>
+
+          <div style="font-size:10px;font-weight:600;color:var(--tx2);text-transform:uppercase;letter-spacing:.04em;margin:14px 0 8px;border-top:1px solid var(--border);padding-top:12px">Dicatat oleh</div>
+          <div class="ifield"><input type="text" id="iDicatatOleh" placeholder="Nama kamu"></div>
+
+          <button type="submit" id="iBtnSubmit" style="width:100%;padding:11px;background:var(--green);color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;margin-top:6px">Simpan Transaksi</button>
+        </form>
+
+        <div style="text-align:center;margin-top:10px">
+          <button onclick="resetScriptUrl()" style="background:none;border:none;font-size:10px;color:var(--tx2);text-decoration:underline;cursor:pointer">Ganti URL Apps Script</button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<style>
+  .ifield{margin-bottom:10px}
+  .ifield label{display:block;font-size:11px;color:var(--tx2);font-weight:500;margin-bottom:4px}
+  .ifield input, .ifield select{width:100%;padding:8px 9px;border:1px solid var(--border);border-radius:6px;font-size:13px;font-family:inherit;background:#fff;color:var(--tx)}
+  .itype-tab.active{background:var(--green);color:#fff;border-color:var(--green)!important}
+  .itoggle.active{background:#E6F1FB;border-color:#0C447C!important;color:#0C447C}
+</style>
+
+<script>
+// ═══════════════════════════════════════════════════════════════
+// INPUT TRANSAKSI MODAL — LOGIC
+// ═══════════════════════════════════════════════════════════════
+var SCRIPT_URL_KEY = 'laberp_script_url';
+var iCurrentType = 'masuk';
+var iCurrentTransferMode = 'rekening';
+var iFormData = null; // cache dropdown data {projects, akun, kategori, today}
+
+function getScriptUrl() { return localStorage.getItem(SCRIPT_URL_KEY) || ''; }
+function setScriptUrl(url) { localStorage.setItem(SCRIPT_URL_KEY, url); }
+function resetScriptUrl() {
+  localStorage.removeItem(SCRIPT_URL_KEY);
+  document.getElementById('formBox').style.display = 'none';
+  document.getElementById('setupUrlBox').style.display = 'block';
+  iFormData = null;
+}
+
+function openInputModal() {
+  document.getElementById('inputModalOverlay').style.display = 'flex';
+  var url = getScriptUrl();
+  if (!url) {
+    document.getElementById('setupUrlBox').style.display = 'block';
+    document.getElementById('formBox').style.display = 'none';
+  } else {
+    document.getElementById('setupUrlBox').style.display = 'none';
+    document.getElementById('formBox').style.display = 'block';
+    if (!iFormData) loadFormData();
+  }
+}
+function closeInputModal() {
+  document.getElementById('inputModalOverlay').style.display = 'none';
+}
+
+function saveScriptUrl() {
+  var url = document.getElementById('scriptUrlInput').value.trim();
+  if (!url.indexOf || url.indexOf('script.google.com') < 0) {
+    alert('URL sepertinya tidak valid. Pastikan diawali https://script.google.com/...');
+    return;
+  }
+  setScriptUrl(url);
+  document.getElementById('setupUrlBox').style.display = 'none';
+  document.getElementById('formBox').style.display = 'block';
+  loadFormData();
+}
+
+function loadFormData() {
+  var url = getScriptUrl();
+  fetch(url + '?action=formdata')
+    .then(function(r){ return r.json(); })
+    .then(function(data){
+      iFormData = data;
+      populateInputDropdowns();
+      setAllInputDates(data.today);
+    })
+    .catch(function(err){
+      showInputAlert('error', 'Gagal memuat data dropdown: ' + err.message);
+    });
+}
+
+function setAllInputDates(todayStr) {
+  document.querySelectorAll('#inputModalOverlay input[type="date"]').forEach(function(el){
+    if(!el.value) el.value = todayStr;
+  });
+}
+
+function populateInputDropdowns() {
+  document.querySelectorAll('#inputModalOverlay .i-proyek').forEach(function(sel){
+    while(sel.options.length>1) sel.remove(1);
+    (iFormData.projects||[]).forEach(function(p){
+      var opt=document.createElement('option');
+      opt.value=p.nama; opt.textContent=p.nama; opt.dataset.projectId=p.id;
+      sel.appendChild(opt);
+    });
+  });
+  document.querySelectorAll('#inputModalOverlay .i-akun').forEach(function(sel){
+    sel.innerHTML='';
+    (iFormData.akun||[]).forEach(function(a){
+      var opt=document.createElement('option'); opt.value=a; opt.textContent=a;
+      sel.appendChild(opt);
+    });
+  });
+  var katSel = document.querySelector('#ipanel-keluar .i-kategori');
+  if(katSel){
+    katSel.innerHTML='';
+    (iFormData.kategori||[]).forEach(function(k){
+      var opt=document.createElement('option'); opt.value=k; opt.textContent=k;
+      katSel.appendChild(opt);
+    });
+  }
+}
+
+// Type tab switching
+document.addEventListener('DOMContentLoaded', function(){
+  document.querySelectorAll('.itype-tab').forEach(function(tab){
+    tab.addEventListener('click', function(){
+      document.querySelectorAll('.itype-tab').forEach(function(t){t.classList.remove('active')});
+      tab.classList.add('active');
+      iCurrentType = tab.dataset.type;
+      document.querySelectorAll('.ipanel').forEach(function(p){p.style.display='none'});
+      document.getElementById('ipanel-'+iCurrentType).style.display='block';
+      hideInputAlert();
+    });
+  });
+  document.querySelectorAll('.itoggle').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      document.querySelectorAll('.itoggle').forEach(function(b){b.classList.remove('active')});
+      btn.classList.add('active');
+      iCurrentTransferMode = btn.dataset.mode;
+      document.getElementById('itransfer-rekening').style.display = iCurrentTransferMode==='rekening'?'block':'none';
+      document.getElementById('itransfer-talangan').style.display = iCurrentTransferMode==='talangan'?'block':'none';
+    });
+  });
+});
+
+function showInputAlert(type, msg){
+  var box=document.getElementById('alertBox');
+  var styles = type==='success'
+    ? 'background:#EAF3DE;color:#3B6D11;border:1px solid #c5dba0'
+    : 'background:#FCEBEB;color:#A32D2D;border:1px solid #f0b0b0';
+  box.style.cssText='display:block;padding:10px 12px;border-radius:6px;font-size:12px;margin-bottom:12px;'+styles;
+  box.textContent=msg;
+}
+function hideInputAlert(){ document.getElementById('alertBox').style.display='none'; }
+
+function iFormValues(containerId){
+  var c=document.getElementById(containerId), out={};
+  c.querySelectorAll('input,select').forEach(function(el){ out[el.name]=el.value; });
+  return out;
+}
+
+document.addEventListener('submit', function(e){
+  if(e.target.id !== 'inputFormEl') return;
+  e.preventDefault();
+
+  var btn=document.getElementById('iBtnSubmit');
+  var dicatatOleh=document.getElementById('iDicatatOleh').value;
+  btn.disabled=true; btn.textContent='Menyimpan...';
+  hideInputAlert();
+
+  var action, data;
+  if(iCurrentType==='masuk'){
+    var f=iFormValues('ipanel-masuk');
+    action='masuk';
+    data={tanggal:f.tanggal,nama_proyek:f.nama_proyek,nama_akun:f.nama_akun,jenis:'Masuk',kategori:f.kategori,deskripsi:f.deskripsi,jumlah:f.jumlah,dicatat_oleh:dicatatOleh};
+  } else if(iCurrentType==='keluar'){
+    var f=iFormValues('ipanel-keluar');
+    action='keluar';
+    data={tanggal:f.tanggal,nama_proyek:f.nama_proyek,nama_akun:f.nama_akun,jenis:'Keluar',kategori:f.kategori,deskripsi:f.deskripsi,jumlah:f.jumlah,dicatat_oleh:dicatatOleh};
+  } else if(iCurrentType==='transfer'){
+    if(iCurrentTransferMode==='rekening'){
+      var f=iFormValues('itransfer-rekening');
+      action='transfer';
+      data={tanggal:f.t_tanggal,akun_asal:f.t_akun_asal,akun_tujuan:f.t_akun_tujuan,nama_proyek:f.t_nama_proyek,deskripsi:f.t_deskripsi,jumlah:f.t_jumlah,dicatat_oleh:dicatatOleh};
+    } else {
+      var f=iFormValues('itransfer-talangan');
+      action='talangan';
+      data={tanggal:f.tl_tanggal,proyek_pemberi:f.tl_proyek_pemberi,proyek_penerima:f.tl_proyek_penerima,akun_asal:f.tl_akun_asal,akun_tujuan:f.tl_akun_tujuan,deskripsi:f.tl_deskripsi,jumlah:f.tl_jumlah,dicatat_oleh:dicatatOleh};
+    }
+  } else if(iCurrentType==='pinjam'){
+    var f=iFormValues('ipanel-pinjam');
+    var sel=document.querySelector('select[name="p_proyek"]');
+    var projectId = sel.selectedOptions[0] ? (sel.selectedOptions[0].dataset.projectId||'') : '';
+    action='pinjam';
+    data={tanggal_cair:f.p_tanggal_cair,nama_investor:f.p_nama_investor,project_id:projectId,nama_proyek_display:f.p_proyek,akun_penerima:f.p_akun_penerima,jumlah_pinjaman:f.p_jumlah,return_pct:f.p_return_pct,skema:f.p_skema,tanggal_jatuh_tempo:f.p_jatuh_tempo,dicatat_oleh:dicatatOleh};
+  } else if(iCurrentType==='lainnya'){
+    var f=iFormValues('ipanel-lainnya');
+    action='lainnya';
+    data={tanggal:f.l_tanggal,nama_proyek:f.l_proyek,nama_akun:f.l_akun,jenis:f.l_jenis,kategori:f.l_kategori,deskripsi:f.l_deskripsi,jumlah:f.l_jumlah,dicatat_oleh:dicatatOleh};
+  }
+
+  var url=getScriptUrl();
+  // Kirim sebagai text/plain agar browser tidak melakukan CORS preflight (OPTIONS)
+  // — Apps Script Web App tidak menangani preflight, tapi simple-request POST ini diizinkan.
+  fetch(url, {
+    method:'POST',
+    headers:{'Content-Type':'text/plain;charset=utf-8'},
+    body: JSON.stringify({action:action, data:data})
+  })
+  .then(function(r){ return r.json(); })
+  .then(function(result){
+    btn.disabled=false; btn.textContent='Simpan Transaksi';
+    if(result.ok){
+      showInputAlert('success', '✓ '+result.message);
+      // Reset jumlah & deskripsi saja, biar input berturut2 lebih cepat
+      document.querySelectorAll('.ipanel input[type="number"], .ipanel input[type="text"]').forEach(function(el){ el.value=''; });
+      // Refresh dashboard agar data baru langsung kelihatan
+      setTimeout(function(){ loadAll(); }, 600);
+    } else {
+      showInputAlert('error', '✗ '+result.error);
+    }
+  })
+  .catch(function(err){
+    btn.disabled=false; btn.textContent='Simpan Transaksi';
+    showInputAlert('error', '✗ Gagal kirim: '+err.message+' (cek URL Apps Script & koneksi)');
+  });
+});
+</script>
+
 </body>
 </html>
