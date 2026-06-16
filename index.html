@@ -554,30 +554,63 @@ function buildPinjaman(rows) {
 
 function buildTrx(rows) {
   if(!rows.length) return '<p style="font-size:11px;color:var(--tx2);padding:6px">Tidak ada transaksi</p>';
-  // Sort by tanggal desc — tampilkan SEMUA transaksi (sesuai filter aktif)
-  var sorted = rows.slice().sort(function(a,b){
-    return (get(b,'tanggal')||'').localeCompare(get(a,'tanggal')||'');
+
+  // Group by kategori
+  var groups = {};
+  var order = [];
+  rows.forEach(function(t){
+    var kat = (get(t,'kategori')||'').trim() || 'Lainnya';
+    if(!groups[kat]) { groups[kat]=[]; order.push(kat); }
+    groups[kat].push(t);
   });
-  var html = '<div style="font-size:10px;color:var(--tx2);margin-bottom:6px">'+sorted.length+' transaksi</div>'
-    +'<table><thead><tr>'
-    +'<th>Tanggal</th><th>Proyek</th><th>Kategori</th>'
-    +'<th>Keterangan</th>'
-    +'<th style="text-align:right">Jumlah</th><th>Jenis</th>'
-    +'</tr></thead><tbody>';
-  sorted.forEach(function(t) {
-    var jenis = get(t,'jenis')||'';
-    var jClass = jenis==='Masuk' ? 'pg' : jenis==='Keluar' ? 'pr' : 'pgr';
-    var desc = get(t,'deskripsi')||get(t,'Sumber')||get(t,'sumber')||'';
-    html += '<tr>'
-      +'<td style="color:var(--tx2);white-space:nowrap">'+get(t,'tanggal')+'</td>'
-      +'<td style="color:var(--tx2);max-width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+get(t,'nama_proyek')+'">'+get(t,'nama_proyek').substring(0,12)+'</td>'
-      +'<td style="white-space:nowrap">'+get(t,'kategori')+'</td>'
-      +'<td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--tx2)" title="'+desc+'">'+desc+'</td>'
-      +'<td style="text-align:right;font-variant-numeric:tabular-nums">'+idr(toNum(get(t,'jumlah')))+'</td>'
-      +'<td><span class="pill '+jClass+'">'+jenis+'</span></td>'
-      +'</tr>';
+
+  // Sort groups by total |jumlah| desc (kategori paling besar dulu)
+  order.sort(function(a,b){
+    var sa = groups[a].reduce(function(s,t){ return s+toNum(get(t,'jumlah')); },0);
+    var sb = groups[b].reduce(function(s,t){ return s+toNum(get(t,'jumlah')); },0);
+    return sb - sa;
   });
-  return html + '</tbody></table>';
+
+  var html = '<div style="font-size:10px;color:var(--tx2);margin-bottom:8px">'+rows.length+' transaksi · '+order.length+' kategori</div>';
+
+  order.forEach(function(kat){
+    var items = groups[kat].slice().sort(function(a,b){
+      return (get(b,'tanggal')||'').localeCompare(get(a,'tanggal')||'');
+    });
+    var totalMasuk=0, totalKeluar=0;
+    items.forEach(function(t){
+      var j = get(t,'jenis');
+      var v = toNum(get(t,'jumlah'));
+      if(j==='Masuk') totalMasuk+=v; else if(j==='Keluar') totalKeluar+=v;
+    });
+
+    html += '<div style="margin-bottom:14px">'
+      +'<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 8px;background:var(--gray-l);border-radius:5px;margin-bottom:4px">'
+        +'<span style="font-size:11px;font-weight:600;color:var(--tx)">'+kat+'</span>'
+        +'<span style="font-size:10px;color:var(--tx2)">'+items.length+' transaksi'
+          +(totalMasuk>0?' · <span style="color:#27500A;font-weight:600">+'+idr(totalMasuk)+'</span>':'')
+          +(totalKeluar>0?' · <span style="color:#A32D2D;font-weight:600">−'+idr(totalKeluar)+'</span>':'')
+        +'</span>'
+      +'</div>'
+      +'<table style="width:100%"><tbody>';
+
+    items.forEach(function(t) {
+      var jenis = get(t,'jenis')||'';
+      var jClass = jenis==='Masuk' ? 'pg' : jenis==='Keluar' ? 'pr' : 'pgr';
+      var desc = get(t,'deskripsi')||get(t,'Sumber')||get(t,'sumber')||'';
+      html += '<tr>'
+        +'<td style="color:var(--tx2);white-space:nowrap;width:80px">'+get(t,'tanggal')+'</td>'
+        +'<td style="color:var(--tx2);max-width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+get(t,'nama_proyek')+'">'+get(t,'nama_proyek').substring(0,12)+'</td>'
+        +'<td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--tx2)" title="'+desc+'">'+desc+'</td>'
+        +'<td style="text-align:right;font-variant-numeric:tabular-nums;width:90px">'+idr(toNum(get(t,'jumlah')))+'</td>'
+        +'<td style="width:60px"><span class="pill '+jClass+'">'+jenis+'</span></td>'
+        +'</tr>';
+    });
+
+    html += '</tbody></table></div>';
+  });
+
+  return html;
 }
 
 function buildBudgetBars(rows) {
