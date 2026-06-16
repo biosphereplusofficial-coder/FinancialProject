@@ -1326,8 +1326,29 @@ function renderCharts(d, m) {
         {label:'Potensi',data:pt,backgroundColor:'rgba(184,182,169,.45)',borderRadius:4}
       ]},
       options:{responsive:true,maintainAspectRatio:false,
+        layout:{padding:{top:16}},
         plugins:{legend:{labels:{font:{size:10}}}},
-        scales:{y:{ticks:{callback:function(v){return idr(v);},font:{size:10}},grid:{color:'#F0EFEB'}},x:{ticks:{font:{size:10}}}}}
+        scales:{y:{ticks:{callback:function(v){return idr(v);},font:{size:10}},grid:{color:'#F0EFEB'}},x:{ticks:{font:{size:10}}}}},
+      plugins:[{
+        id:'valLabel',
+        afterDatasetsDraw:function(chart){
+          var ctx2 = chart.ctx;
+          chart.data.datasets.forEach(function(dataset, di){
+            var meta = chart.getDatasetMeta(di);
+            if(meta.hidden) return;
+            meta.data.forEach(function(bar, i){
+              var v = dataset.data[i];
+              if(!v) return;
+              ctx2.save();
+              ctx2.font = '600 9px system-ui';
+              ctx2.fillStyle = '#5F5E5A';
+              ctx2.textAlign = 'center';
+              ctx2.fillText(idr(v), bar.x, bar.y - 4);
+              ctx2.restore();
+            });
+          });
+        }
+      }]
     });
   }
 
