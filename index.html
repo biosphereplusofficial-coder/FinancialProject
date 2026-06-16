@@ -441,13 +441,14 @@ function computeMetrics(d) {
     if(t.status==='Draft') pending++;
   });
 
+  var totalSaldo = (d.akun||[]).reduce(function(s,a){ return s+toNum(get(a,'saldo_aktual')); },0);
   return {
     revenue:revenue, potRev:potRev,
     realBiaya:realBiaya, rencanaBiaya:rencanaBiaya,
     profit:revenue-realBiaya, potProfit:potRev-rencanaBiaya,
     totalPinj:totalPinj, sisaHutang:sisaHutang,
     retensi:retensi, retensiCair:retensiCair,
-    pending:pending, outstanding:outstanding,
+    pending:pending, outstanding:outstanding, totalSaldo:totalSaldo,
     mAkt: revenue ? Math.round((revenue-realBiaya)/revenue*100) : 0,
     mPot: potRev  ? Math.round((potRev-rencanaBiaya)/potRev*100)  : 0,
   };
@@ -984,7 +985,9 @@ function buildProjectFinance(d) {
 
   function renderAggCard(title, kontrakLabel, agg) {
     barRow._max = Math.max(agg.nilaiKontrak, agg.cashMasuk, agg.rencanaBiaya, 1);
-    var cashColor  = agg.cashTersisa>=0 ? '#3B6D11' : '#A32D2D';
+    // Cash tersisa = Cash Masuk - Realisasi Anggaran
+    var cashTersisa = agg.cashMasuk - agg.realisasiBiaya;
+    var cashColor  = cashTersisa>=0 ? '#3B6D11' : '#A32D2D';
     var serapColor = agg.serapPct>100?'#A32D2D':agg.serapPct>70?'#633806':'#3B6D11';
     return '<div style="border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin-bottom:12px">'
       +'<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:9px">'
@@ -992,12 +995,11 @@ function buildProjectFinance(d) {
         +'<div style="font-size:10px;color:var(--tx2)">'+kontrakLabel+': <b style="color:var(--tx)">'+idr(agg.nilaiKontrak)+'</b></div>'
       +'</div>'
       + barRow('Cash Masuk (Termin)', agg.cashMasuk, '#27500A')
-      + barRow('Transaksi Keluar', agg.transaksiKeluar, '#A32D2D')
       + barRow('Realisasi Anggaran', agg.realisasiBiaya, serapColor, agg.serapPct+'%')
       + barRow('Sisa Kebutuhan Budget', agg.sisaKebutuhan, '#633806')
       +'<div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;padding-top:8px;border-top:1px dashed var(--border)">'
-        +'<span style="font-size:10px;color:var(--tx2)">Cash tersisa di tangan (Cash masuk − Transaksi keluar)</span>'
-        +'<span style="font-size:13px;font-weight:700;color:'+cashColor+'">'+idr(agg.cashTersisa)+'</span>'
+        +'<span style="font-size:10px;color:var(--tx2)">Cash tersisa di tangan (Cash masuk − Realisasi anggaran)</span>'
+        +'<span style="font-size:13px;font-weight:700;color:'+cashColor+'">'+idr(cashTersisa)+'</span>'
       +'</div>'
     +'</div>';
   }
@@ -1092,7 +1094,7 @@ function renderAll() {
     + '<div class="mgrid">'
     + metricCard('Pinjaman Aktif','Modal investor', idr(m.totalPinj), d.pinjaman.filter(function(p){return p.status==='Aktif';}).length+' investor aktif', '#0C447C')
     + metricCard('Sisa Hutang','Belum lunas', idr(m.sisaHutang), 'Pokok + return', '#A32D2D')
-    + metricCard('Retensi Belum Cair','Tertahan', idr(m.retensi-m.retensiCair), 'Cair setelah FHO', '#633806')
+    + metricCard('Cash di Rekening','Total saldo akun', idr(m.totalSaldo), d.akun.length+' rekening aktif', '#085041')
     + metricCard('Transaksi Pending','Menunggu approval', m.pending+' transaksi', 'Outstanding: <b>'+idr(m.outstanding)+'</b>', '#A32D2D')
     + '</div>'
 
@@ -1146,14 +1148,14 @@ function renderAll() {
       }).join('')
     + '</div></div></div>'
 
-    // KONDISI KEUANGAN PER PROYEK
+    // KONDISI KEUANGAN PER PROYEK (versi summary — single box)
     + '<div class="cgrid" style="margin-top:0">'
     + '<div class="card" style="border-left:4px solid #0C447C">'
-    + '<div class="ctitle">💰 Kondisi Keuangan per Proyek</div>'
-    + buildKondisiProyek(d)
+    + '<div class="ctitle">💼 Kondisi Keuangan per Proyek</div>'
+    + buildProjectFinance(d)
     + '</div></div>'
 
-    // REKONSILIASI BOX
+    // REKONSILIASI BOX (paling bawah)
     + '<div class="cgrid" style="margin-top:0">'
     + '<div class="card" style="border-left:4px solid #633806">'
     + '<div class="ctitle" style="display:flex;justify-content:space-between;align-items:center">'
@@ -1161,13 +1163,6 @@ function renderAll() {
     + '<span style="font-size:10px;font-weight:400;color:var(--tx2)">Membandingkan transaksi tercatat vs saldo rekening aktual</span>'
     + '</div>'
     + buildRekonsiliasi(d, m)
-    + '</div></div>'
-
-    // KONDISI KEUANGAN PER PROYEK
-    + '<div class="cgrid" style="margin-top:0">'
-    + '<div class="card" style="border-left:4px solid #0C447C">'
-    + '<div class="ctitle">💼 Kondisi Keuangan per Proyek</div>'
-    + buildProjectFinance(d)
     + '</div></div>'
 
     + '</div>'; // end .body
