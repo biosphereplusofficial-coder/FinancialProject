@@ -797,34 +797,40 @@ function buildCashRecon(d) {
 }
 
 function buildRekonsiliasi(d, m) {
+  // PENTING: Rekonsiliasi kas selalu memakai data MENTAH (semua transaksi,
+  // semua proyek, semua tahun) lewat variabel global D — bukan d (yang sudah
+  // terfilter Tahun/Proyek). Ini supaya transaksi tanpa nama_proyek (transfer
+  // pribadi, biaya operasional umum, dsb) tidak diam-diam hilang dari hitungan
+  // hanya karena tidak match nama proyek manapun, dan supaya saldo rekening
+  // (yang memang company-wide) dibandingkan terhadap transaksi company-wide juga.
+
   // === SUMBER DANA (uang yang masuk/tersedia) ===
-  var revenueCair   = m.revenue;                          // termin lunas
-  var totalPinjaman = m.totalPinj;                        // modal investor masuk
-  var totalMasuk    = d.transaksi.filter(function(t){
-    return get(t,'jenis')==='Masuk' && get(t,'kategori')!=='Transfer';
+  var revenueAll = (D.termin||[]).filter(function(t){ return get(t,'status').trim()==='Lunas'; })
+    .reduce(function(s,t){ return s+toNum(get(t,'nilai_bersih')); },0);
+  var pinjamanAll = (D.pinjaman||[]).reduce(function(s,p){ return s+toNum(get(p,'jumlah_pinjaman')); },0);
+
+  var totalMasuk = (D.transaksi||[]).filter(function(t){
+    return get(t,'jenis').trim()==='Masuk' && get(t,'kategori').trim()!=='Transfer';
   }).reduce(function(s,t){ return s+toNum(get(t,'jumlah')); },0);
 
   // === PENGGUNAAN DANA (uang keluar tercatat) ===
-  var totalKeluar   = d.transaksi.filter(function(t){
-    return get(t,'jenis')==='Keluar' && get(t,'kategori')!=='Transfer';
+  var totalKeluar = (D.transaksi||[]).filter(function(t){
+    return get(t,'jenis').trim()==='Keluar' && get(t,'kategori').trim()!=='Transfer';
   }).reduce(function(s,t){ return s+toNum(get(t,'jumlah')); },0);
 
-  // === SALDO AKTUAL (uang di rekening sekarang) ===
-  var totalSaldo    = d.akun.reduce(function(s,a){
-    return s+toNum(get(a,'saldo_aktual'));
-  },0);
+  // === SALDO REKENING: aktual (sekarang) DAN awal (sebelum mulai tracking) ===
+  var totalSaldo     = buildAkunList(D.akun).reduce(function(s,a){ return s+a.aktual; },0);
+  var totalSaldoAwal = buildAkunList(D.akun).reduce(function(s,a){ return s+a.awal;   },0);
 
   // === REKONSILIASI ===
-  // Dana tersedia = Revenue cair + Pinjaman masuk
-  var danaTersedia  = revenueCair + totalPinjaman;
-  // Saldo seharusnya = Dana masuk - Dana keluar
+  var revenueCair = revenueAll, totalPinjaman = pinjamanAll;
+  var danaTersedia = revenueCair + totalPinjaman;
+  // Saldo seharusnya = Dana masuk - Dana keluar (murni dari transaksi tercatat)
   var saldoSeharusnya = totalMasuk - totalKeluar;
-  // Selisih = Saldo aktual vs saldo seharusnya dari transaksi
-  var selisihTrx   = totalSaldo - saldoSeharusnya;
-  // Selisih kas = Dana tersedia (revenue+pinjaman) vs saldo aktual rekening
-  var selisihKas   = danaTersedia - totalSaldo - totalKeluar + totalPinjaman;
-  // Gap sederhana: uang masuk tercatat vs saldo rekening aktual
-  var gapSaldo     = totalMasuk - totalKeluar - totalSaldo;
+  // Saldo yang DIHARAPKAN di rekening = saldo awal + net transaksi
+  var saldoEkspektasi = totalSaldoAwal + saldoSeharusnya;
+  // Gap = saldo yang diharapkan vs saldo aktual sebenarnya di rekening
+  var gapSaldo = saldoEkspektasi - totalSaldo;
 
   var absGap = Math.abs(gapSaldo);
   var gapColor = absGap < 1000 ? '#27500A' : absGap < 5000000 ? '#633806' : '#A32D2D';
@@ -833,11 +839,12 @@ function buildRekonsiliasi(d, m) {
     : '⚠ Selisih kurang — kemungkinan transaksi dobel atau data hilang';
 
   var rows = [
-    {label:'Total Masuk (non-transfer)',  val:totalMasuk,       color:'#27500A', icon:'▲'},
-    {label:'Total Keluar (non-transfer)', val:totalKeluar,      color:'#A32D2D', icon:'▼'},
-    {label:'Saldo bersih dari transaksi', val:saldoSeharusnya,  color:'#0C447C', icon:'='},
-    {label:'Saldo aktual rekening',       val:totalSaldo,       color:'#534AB7', icon:'$'},
-    {label:'Selisih / Galat',             val:gapSaldo,         color:gapColor,  icon:'!', bold:true},
+    {label:'Saldo Awal (sebelum tracking)', val:totalSaldoAwal,   color:'#5F5E5A', icon:'○'},
+    {label:'Total Masuk (non-transfer)',     val:totalMasuk,       color:'#27500A', icon:'▲'},
+    {label:'Total Keluar (non-transfer)',    val:totalKeluar,      color:'#A32D2D', icon:'▼'},
+    {label:'Saldo yang diharapkan',          val:saldoEkspektasi,  color:'#0C447C', icon:'='},
+    {label:'Saldo aktual rekening',          val:totalSaldo,       color:'#534AB7', icon:'$'},
+    {label:'Selisih / Galat',                val:gapSaldo,         color:gapColor,  icon:'!', bold:true},
   ];
 
   var html = '<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">'
@@ -878,7 +885,7 @@ function buildRekonsiliasi(d, m) {
         +'</div>'
         +'<div style="display:flex;justify-content:space-between;font-size:11px;color:var(--tx2)">'
           +'<span>Jumlah rekening aktif</span>'
-          +'<span>'+d.akun.length+' akun</span>'
+          +'<span>'+buildAkunList(D.akun).length+' akun</span>'
         +'</div>'
       +'</div>'
     +'</div>'
@@ -1262,7 +1269,7 @@ function renderAll() {
     + '<div class="card" style="border-left:4px solid #633806">'
     + '<div class="ctitle" style="display:flex;justify-content:space-between;align-items:center">'
     + '<span>⚖ Rekonsiliasi Kas & Deteksi Galat Transaksi</span>'
-    + '<span style="font-size:10px;font-weight:400;color:var(--tx2)">Membandingkan transaksi tercatat vs saldo rekening aktual</span>'
+    + '<span style="font-size:10px;font-weight:400;color:var(--tx2)">Seluruh data (tidak terpengaruh filter Tahun/Proyek)</span>'
     + '</div>'
     + buildRekonsiliasi(d, m)
     + '</div></div>'
