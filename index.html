@@ -892,85 +892,163 @@ function barRow(label, val, maxVal, color) {
 function buildProjectFinance(d) {
   if(!d.projects.length) return '<p style="font-size:11px;color:var(--tx2);padding:6px">Tidak ada proyek</p>';
 
-  var html = '<div style="display:flex;flex-direction:column;gap:14px">';
+  var isSingleProject = d.projects.length === 1;
+  var KATEGORI_LIST = ['Personel','Akomodasi','Alat','Marketing','Lainnya'];
 
-  d.projects.forEach(function(p) {
-    var pn = get(p,'nama_proyek').trim();
-    var nilaiKontrak = toNum(get(p,'nilai_kontrak'));
+  function barRow(label, val, color, sub) {
+    var w = Math.min(100, Math.round(val/(barRow._max||1)*100));
+    return '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">'
+      +'<div style="width:140px;flex-shrink:0;font-size:10px;color:var(--tx2);text-align:right">'+label+'</div>'
+      +'<div style="flex:1;height:13px;background:var(--gray-l);border-radius:3px;overflow:hidden">'
+        +'<div style="height:100%;width:'+w+'%;background:'+color+';border-radius:3px"></div>'
+      +'</div>'
+      +'<div style="width:78px;flex-shrink:0;font-size:10px;font-weight:600;color:'+color+';text-align:right">'+idr(val)+'</div>'
+      +(sub?'<div style="width:46px;flex-shrink:0;font-size:9px;color:var(--tx2);text-align:right">'+sub+'</div>':'<div style="width:46px;flex-shrink:0"></div>')
+    +'</div>';
+  }
 
-    // Cash masuk: termin yang sudah Lunas
-    var cashMasuk = 0;
+  // ── Aggregate across given list of projects (1 or many) ────────────────────
+  function computeAgg(projectList) {
+    var nilaiKontrak=0, cashMasuk=0, transaksiKeluar=0, rencanaBiaya=0, realisasiBiaya=0;
+    var pnSet = {};
+    projectList.forEach(function(p){ pnSet[get(p,'nama_proyek').trim()]=true; });
+
+    projectList.forEach(function(p){ nilaiKontrak += toNum(get(p,'nilai_kontrak')); });
+
     d.termin.forEach(function(t){
-      if(get(t,'nama_proyek').trim()===pn && get(t,'status')==='Lunas') cashMasuk += toNum(get(t,'nilai_bersih'));
+      var tp = get(t,'nama_proyek').trim();
+      if(pnSet[tp] && get(t,'status').trim()==='Lunas') cashMasuk += toNum(get(t,'nilai_bersih'));
     });
 
-    // Total budget rencana & realisasi (dari sheet Budget)
-    var rencanaBiaya = 0, realisasiBiaya = 0;
     d.budget.forEach(function(b){
-      if(get(b,'nama_proyek').trim()===pn) {
+      var bp = get(b,'nama_proyek').trim();
+      if(pnSet[bp]) {
         rencanaBiaya   += toNum(get(b,'nilai_rencana'));
         realisasiBiaya += toNum(get(b,'nilai_realisasi'));
       }
     });
 
-    // Transaksi keluar yang sudah benar2 dibayarkan (dari sheet Transaksi, jenis=Keluar)
-    // Trim semua nilai untuk hindari whitespace mismatch dari gviz export
-    var transaksiKeluar = 0, transaksiMasuk = 0;
     d.transaksi.forEach(function(t){
-      var tProj  = get(t,'nama_proyek').trim();
-      var tJenis = get(t,'jenis').trim();
-      var tKat   = get(t,'kategori').trim();
-      if(tProj===pn) {
-        if(tJenis==='Keluar' && tKat!=='Transfer') {
-          transaksiKeluar += toNum(get(t,'jumlah'));
-        }
-        if(tJenis==='Masuk' && tKat!=='Transfer') {
-          transaksiMasuk += toNum(get(t,'jumlah'));
-        }
+      var tp = get(t,'nama_proyek').trim();
+      var jenis = get(t,'jenis').trim();
+      var kat   = get(t,'kategori').trim();
+      if(pnSet[tp] && jenis==='Keluar' && kat!=='Transfer') transaksiKeluar += toNum(get(t,'jumlah'));
+    });
+
+    var sisaKebutuhan = Math.max(0, rencanaBiaya - realisasiBiaya);
+    var cashTersisa   = cashMasuk - transaksiKeluar;
+    var serapPct      = rencanaBiaya ? Math.round(realisasiBiaya/rencanaBiaya*100) : 0;
+
+    return {
+      nilaiKontrak:nilaiKontrak, cashMasuk:cashMasuk, transaksiKeluar:transaksiKeluar,
+      rencanaBiaya:rencanaBiaya, realisasiBiaya:realisasiBiaya,
+      sisaKebutuhan:sisaKebutuhan, cashTersisa:cashTersisa, serapPct:serapPct
+    };
+  }
+
+  // ── Breakdown per kategori (Personel, Akomodasi, Alat, Marketing, Lainnya) ──
+  function computeKategoriBreakdown(projectList) {
+    var pnSet = {};
+    projectList.forEach(function(p){ pnSet[get(p,'nama_proyek').trim()]=true; });
+
+    var katMap = {}; // {kategori: {rencana, realisasi, transaksiKeluar}}
+    KATEGORI_LIST.forEach(function(k){ katMap[k]={rencana:0,realisasi:0,trx:0}; });
+
+    function resolveKat(raw) {
+      raw = (raw||'').trim();
+      if(KATEGORI_LIST.indexOf(raw)>=0) return raw;
+      return 'Lainnya';
+    }
+
+    d.budget.forEach(function(b){
+      var bp = get(b,'nama_proyek').trim();
+      if(!pnSet[bp]) return;
+      var k = resolveKat(get(b,'pos_biaya'));
+      katMap[k].rencana   += toNum(get(b,'nilai_rencana'));
+      katMap[k].realisasi += toNum(get(b,'nilai_realisasi'));
+    });
+
+    d.transaksi.forEach(function(t){
+      var tp = get(t,'nama_proyek').trim();
+      if(!pnSet[tp]) return;
+      var jenis = get(t,'jenis').trim();
+      var kat   = get(t,'kategori').trim();
+      if(jenis==='Keluar' && kat!=='Transfer') {
+        var k = resolveKat(kat);
+        katMap[k].trx += toNum(get(t,'jumlah'));
       }
     });
 
-    var sisaKebutuhan = rencanaBiaya - realisasiBiaya;
-    if(sisaKebutuhan < 0) sisaKebutuhan = 0;
-    var cashTersisa = cashMasuk - transaksiKeluar;
-    var serapPct = rencanaBiaya ? Math.round(realisasiBiaya/rencanaBiaya*100) : 0;
+    return katMap;
+  }
 
-    var maxBar = Math.max(nilaiKontrak, cashMasuk, rencanaBiaya, 1);
-
-    function barRow(label, val, color, sub) {
-      var w = Math.round(val/maxBar*100);
-      return '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">'
-        +'<div style="width:110px;flex-shrink:0;font-size:10px;color:var(--tx2);text-align:right">'+label+'</div>'
-        +'<div style="flex:1;height:13px;background:var(--gray-l);border-radius:3px;overflow:hidden">'
-          +'<div style="height:100%;width:'+w+'%;background:'+color+';border-radius:3px"></div>'
-        +'</div>'
-        +'<div style="width:78px;flex-shrink:0;font-size:10px;font-weight:600;color:'+color+';text-align:right">'+idr(val)+'</div>'
-        +(sub?'<div style="width:50px;flex-shrink:0;font-size:9px;color:var(--tx2);text-align:right">'+sub+'</div>':'<div style="width:50px;flex-shrink:0"></div>')
-      +'</div>';
-    }
-
-    var cashColor = cashTersisa >= 0 ? '#3B6D11' : '#A32D2D';
-    var serapColor = serapPct>100?'#A32D2D':serapPct>70?'#633806':'#3B6D11';
-
-    html += '<div style="border:1px solid var(--border);border-radius:8px;padding:12px 14px">'
+  function renderAggCard(title, kontrakLabel, agg) {
+    barRow._max = Math.max(agg.nilaiKontrak, agg.cashMasuk, agg.rencanaBiaya, 1);
+    var cashColor  = agg.cashTersisa>=0 ? '#3B6D11' : '#A32D2D';
+    var serapColor = agg.serapPct>100?'#A32D2D':agg.serapPct>70?'#633806':'#3B6D11';
+    return '<div style="border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin-bottom:12px">'
       +'<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:9px">'
-        +'<div style="font-size:12px;font-weight:600;color:var(--tx)">'+get(p,'nama_proyek')+'</div>'
-        +'<div style="font-size:10px;color:var(--tx2)">Kontrak: <b style="color:var(--tx)">'+idr(nilaiKontrak)+'</b></div>'
+        +'<div style="font-size:12px;font-weight:600;color:var(--tx)">'+title+'</div>'
+        +'<div style="font-size:10px;color:var(--tx2)">'+kontrakLabel+': <b style="color:var(--tx)">'+idr(agg.nilaiKontrak)+'</b></div>'
       +'</div>'
-      + barRow('Cash Masuk (Termin)', cashMasuk, '#27500A')
-      + barRow('Transaksi Keluar', transaksiKeluar, '#A32D2D')
-      + barRow('Realisasi Anggaran', realisasiBiaya, serapColor, serapPct+'%')
-      + barRow('Sisa Kebutuhan Budget', sisaKebutuhan, '#633806')
+      + barRow('Cash Masuk (Termin)', agg.cashMasuk, '#27500A')
+      + barRow('Transaksi Keluar', agg.transaksiKeluar, '#A32D2D')
+      + barRow('Realisasi Anggaran', agg.realisasiBiaya, serapColor, agg.serapPct+'%')
+      + barRow('Sisa Kebutuhan Budget', agg.sisaKebutuhan, '#633806')
       +'<div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;padding-top:8px;border-top:1px dashed var(--border)">'
         +'<span style="font-size:10px;color:var(--tx2)">Cash tersisa di tangan (Cash masuk − Transaksi keluar)</span>'
-        +'<span style="font-size:13px;font-weight:700;color:'+cashColor+'">'+idr(cashTersisa)+'</span>'
+        +'<span style="font-size:13px;font-weight:700;color:'+cashColor+'">'+idr(agg.cashTersisa)+'</span>'
       +'</div>'
     +'</div>';
-  });
+  }
 
-  html += '</div>';
-  return html;
+  function renderKategoriTable(katMap) {
+    var rows = KATEGORI_LIST.map(function(k){ return {k:k, v:katMap[k]}; })
+      .filter(function(r){ return r.v.rencana>0 || r.v.realisasi>0 || r.v.trx>0; });
+    if(!rows.length) return '';
+
+    var html = '<div style="margin-top:4px">'
+      +'<div style="font-size:10px;font-weight:600;color:var(--tx2);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">Detail per Kategori</div>'
+      +'<table style="width:100%;border-collapse:collapse;font-size:11px">'
+      +'<thead><tr>'
+        +'<th style="text-align:left;padding:5px 6px;font-size:10px;color:var(--tx2);border-bottom:1px solid var(--border)">Kategori</th>'
+        +'<th style="text-align:right;padding:5px 6px;font-size:10px;color:var(--tx2);border-bottom:1px solid var(--border)">Rencana</th>'
+        +'<th style="text-align:right;padding:5px 6px;font-size:10px;color:var(--tx2);border-bottom:1px solid var(--border)">Realisasi</th>'
+        +'<th style="text-align:right;padding:5px 6px;font-size:10px;color:var(--tx2);border-bottom:1px solid var(--border)">Transaksi</th>'
+        +'<th style="text-align:right;padding:5px 6px;font-size:10px;color:var(--tx2);border-bottom:1px solid var(--border)">% Serap</th>'
+      +'</tr></thead><tbody>';
+
+    rows.forEach(function(r){
+      var pct = r.v.rencana ? Math.round(r.v.realisasi/r.v.rencana*100) : 0;
+      var col = pct>100?'#A32D2D':pct>70?'#633806':'#3B6D11';
+      html += '<tr>'
+        +'<td style="padding:6px 6px;border-bottom:1px solid var(--border)">'+r.k+'</td>'
+        +'<td style="padding:6px 6px;text-align:right;border-bottom:1px solid var(--border);color:var(--tx2)">'+idr(r.v.rencana)+'</td>'
+        +'<td style="padding:6px 6px;text-align:right;border-bottom:1px solid var(--border)">'+idr(r.v.realisasi)+'</td>'
+        +'<td style="padding:6px 6px;text-align:right;border-bottom:1px solid var(--border);color:var(--tx2)">'+idr(r.v.trx)+'</td>'
+        +'<td style="padding:6px 6px;text-align:right;border-bottom:1px solid var(--border);font-weight:700;color:'+col+'">'+pct+'%</td>'
+      +'</tr>';
+    });
+
+    html += '</tbody></table></div>';
+    return html;
+  }
+
+  // ── MAIN LOGIC: single project vs all projects summary ─────────────────────
+  if(isSingleProject) {
+    var p = d.projects[0];
+    var agg = computeAgg([p]);
+    var katMap = computeKategoriBreakdown([p]);
+    return renderAggCard(get(p,'nama_proyek'), 'Kontrak', agg) + renderKategoriTable(katMap);
+  } else {
+    var aggAll = computeAgg(d.projects);
+    var katMapAll = computeKategoriBreakdown(d.projects);
+    return renderAggCard('Ringkasan Semua Proyek ('+d.projects.length+' proyek)', 'Total Kontrak', aggAll)
+      + renderKategoriTable(katMapAll);
+  }
 }
+
+// ═══════════════════════════════════════════════════════════════
 
 // ═══════════════════════════════════════════════════════════════
 // RENDER
