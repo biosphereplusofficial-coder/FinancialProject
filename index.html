@@ -787,6 +787,108 @@ function buildRekonsiliasi(d, m) {
   return html;
 }
 
+function buildKondisiProyek(d) {
+  if(!d.projects.length) return '<p style="font-size:11px;color:var(--tx2);padding:6px">Tidak ada proyek</p>';
+
+  var html = '<div style="display:grid;gap:14px">';
+
+  d.projects.forEach(function(p) {
+    var pname = get(p,'nama_proyek').trim();
+    var pid   = get(p,'project_id').trim();
+    var nilaiKontrak = toNum(get(p,'nilai_kontrak'));
+
+    // Cash in: termin yang sudah Lunas (uang benar-benar cair)
+    var cashIn = 0, cashInList = [];
+    d.termin.forEach(function(t){
+      if(get(t,'nama_proyek').trim()===pname && get(t,'status')==='Lunas') {
+        cashIn += toNum(get(t,'nilai_bersih'));
+      }
+    });
+
+    // Total budget (rencana) dan realisasi (sudah dibayar via transaksi/budget)
+    var totalBudget = 0, totalRealisasi = 0;
+    d.budget.forEach(function(b){
+      if(get(b,'nama_proyek').trim()===pname) {
+        totalBudget    += toNum(get(b,'nilai_rencana'));
+        totalRealisasi += toNum(get(b,'nilai_realisasi'));
+      }
+    });
+
+    // Cash out aktual dari transaksi (uang yang benar2 sudah keluar/dibayarkan)
+    var cashOut = 0;
+    d.transaksi.forEach(function(t){
+      var matchProj = get(t,'nama_proyek').trim()===pname || get(t,'nama_proyek').trim()===pid;
+      if(matchProj && get(t,'jenis')==='Keluar' && get(t,'kategori')!=='Transfer') {
+        cashOut += toNum(get(t,'jumlah'));
+      }
+    });
+
+    var sisaKebutuhan = totalBudget - totalRealisasi;
+    var sisaCash      = cashIn - cashOut;
+    var pctServed     = totalBudget ? Math.round(totalRealisasi/totalBudget*100) : 0;
+    var statusColor   = sisaCash >= 0 ? '#27500A' : '#A32D2D';
+    var cukupKas      = sisaCash >= sisaKebutuhan;
+
+    var maxBar = Math.max(cashIn, totalBudget, cashOut, 1);
+
+    html += '<div style="padding:14px;border-radius:8px;border:1px solid var(--border);background:#fff">'
+      // Header
+      + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">'
+        + '<div style="font-size:13px;font-weight:600">'+pname+'</div>'
+        + '<span class="pill '+(get(p,'status')==='Aktif'?'pa':get(p,'status')==='Selesai'?'pg':'pgr')+'">'+get(p,'status')+'</span>'
+      + '</div>'
+
+      // 3-column metric row
+      + '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px">'
+        + '<div style="background:var(--green-l);border-radius:6px;padding:8px 10px">'
+          + '<div style="font-size:9px;color:#27500A;font-weight:600;text-transform:uppercase">Cash Masuk</div>'
+          + '<div style="font-size:14px;font-weight:700;color:#27500A">'+idr(cashIn)+'</div>'
+          + '<div style="font-size:9px;color:var(--tx2)">dari termin cair</div>'
+        + '</div>'
+        + '<div style="background:var(--red-l);border-radius:6px;padding:8px 10px">'
+          + '<div style="font-size:9px;color:#A32D2D;font-weight:600;text-transform:uppercase">Sudah Dibayar</div>'
+          + '<div style="font-size:14px;font-weight:700;color:#A32D2D">'+idr(cashOut)+'</div>'
+          + '<div style="font-size:9px;color:var(--tx2)">transaksi keluar</div>'
+        + '</div>'
+        + '<div style="background:'+(sisaKebutuhan>0?'var(--amber-l)':'var(--green-l)')+';border-radius:6px;padding:8px 10px">'
+          + '<div style="font-size:9px;color:'+(sisaKebutuhan>0?'#633806':'#27500A')+';font-weight:600;text-transform:uppercase">Sisa Kebutuhan</div>'
+          + '<div style="font-size:14px;font-weight:700;color:'+(sisaKebutuhan>0?'#633806':'#27500A')+'">'+idr(Math.max(sisaKebutuhan,0))+'</div>'
+          + '<div style="font-size:9px;color:var(--tx2)">dari budget</div>'
+        + '</div>'
+      + '</div>'
+
+      // Bar comparison: Cash In vs Budget vs Cash Out
+      + '<div style="margin-bottom:10px">'
+        + barRow('Cash Masuk (Termin Cair)', cashIn, maxBar, '#3B6D11')
+        + barRow('Total Budget', totalBudget, maxBar, '#888780')
+        + barRow('Sudah Dibayarkan', cashOut, maxBar, '#A32D2D')
+      + '</div>'
+
+      // Bottom status line
+      + '<div style="display:flex;justify-content:space-between;align-items:center;padding-top:10px;border-top:1px solid var(--border)">'
+        + '<div style="font-size:11px;color:var(--tx2)">Sisa kas tersedia: <b style="color:'+statusColor+'">'+idr(sisaCash)+'</b></div>'
+        + '<div style="font-size:11px;font-weight:600;color:'+(cukupKas?'#27500A':'#A32D2D')+'">'
+          + (cukupKas ? '✓ Kas cukup untuk sisa budget' : '⚠ Kas belum cukup, kurang '+idr(sisaKebutuhan-sisaCash))
+        + '</div>'
+      + '</div>'
+    + '</div>';
+  });
+
+  html += '</div>';
+  return html;
+}
+
+function barRow(label, val, maxVal, color) {
+  var w = Math.round(val/maxVal*100);
+  return '<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px">'
+    + '<div style="width:140px;flex-shrink:0;font-size:10px;color:var(--tx2)">'+label+'</div>'
+    + '<div style="flex:1;height:10px;background:var(--gray-l);border-radius:3px;overflow:hidden">'
+      + '<div style="height:100%;width:'+w+'%;background:'+color+';border-radius:3px;transition:width .5s"></div>'
+    + '</div>'
+    + '<div style="width:70px;flex-shrink:0;font-size:10px;color:var(--tx2);text-align:right">'+idr(val)+'</div>'
+  + '</div>';
+}
+
 // ═══════════════════════════════════════════════════════════════
 // RENDER
 // ═══════════════════════════════════════════════════════════════
@@ -875,6 +977,13 @@ function renderAll() {
           +'</div>';
       }).join('')
     + '</div></div></div>'
+
+    // KONDISI KEUANGAN PER PROYEK
+    + '<div class="cgrid" style="margin-top:0">'
+    + '<div class="card" style="border-left:4px solid #0C447C">'
+    + '<div class="ctitle">💰 Kondisi Keuangan per Proyek</div>'
+    + buildKondisiProyek(d)
+    + '</div></div>'
 
     // REKONSILIASI BOX
     + '<div class="cgrid" style="margin-top:0">'
