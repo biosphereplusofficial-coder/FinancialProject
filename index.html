@@ -243,6 +243,18 @@ function get(row, field) {
   return '';
 }
 
+// Bulletproof name normalizer for JOIN matching only (not for display).
+// Strips regular spaces, non-breaking spaces (\u00a0), zero-width spaces,
+// tabs, newlines, and lowercases — so gviz/CSV whitespace quirks never break a join.
+function normName(s) {
+  if(!s) return '';
+  return String(s)
+    .replace(/[\u00a0\u200b\u200c\u200d\ufeff]/g, '')  // NBSP, zero-width, BOM
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+}
+
 
 function pillHtml(status) {
   var map = {Lunas:'pg','Sudah tagih':'pa','Belum tagih':'pr',Aktif:'pa',Selesai:'pg',Draft:'pr',Approved:'pg',Pending:'pa'};
@@ -378,21 +390,26 @@ function getFiltered() {
   });
 
   // Build lookup by nama_proyek (primary join key — no project_id in child sheets)
+  // Uses normName() so whitespace/casing quirks from gviz CSV never break the join.
   var pnames = {};
-  projects.forEach(function(p){ if(p.nama_proyek) pnames[p.nama_proyek.trim()]=p; });
+  projects.forEach(function(p){
+    var n = normName(get(p,'nama_proyek'));
+    if(n) pnames[n]=p;
+  });
 
   function byName(row) {
-    var n = (get(row,'nama_proyek')||'').trim();
-    return !!pnames[n];
+    return !!pnames[normName(get(row,'nama_proyek'))];
   }
 
-  // pinjaman.nama_proyek contains project_id (e.g. "LBT-2025-001"), not nama_proyek
-  // build project_id lookup too
+  // pinjaman.nama_proyek may contain project_id (e.g. "LBT-2025-001") instead of nama_proyek
   var pidMap = {};
-  projects.forEach(function(p){ var pid=get(p,'project_id'); if(pid) pidMap[pid.trim()]=true; });
+  projects.forEach(function(p){
+    var pid = normName(get(p,'project_id'));
+    if(pid) pidMap[pid]=true;
+  });
 
   function byNameOrId(row) {
-    var n  = (get(row,'nama_proyek')||'').trim();
+    var n = normName(get(row,'nama_proyek'));
     return !!pnames[n] || !!pidMap[n];
   }
 
@@ -537,11 +554,12 @@ function buildPinjaman(rows) {
 
 function buildTrx(rows) {
   if(!rows.length) return '<p style="font-size:11px;color:var(--tx2);padding:6px">Tidak ada transaksi</p>';
-  // Sort by tanggal desc, take 10 latest
+  // Sort by tanggal desc — tampilkan SEMUA transaksi (sesuai filter aktif)
   var sorted = rows.slice().sort(function(a,b){
-    return (b.tanggal||'').localeCompare(a.tanggal||'');
-  }).slice(0,10);
-  var html = '<table><thead><tr>'
+    return (get(b,'tanggal')||'').localeCompare(get(a,'tanggal')||'');
+  });
+  var html = '<div style="font-size:10px;color:var(--tx2);margin-bottom:6px">'+sorted.length+' transaksi</div>'
+    +'<table><thead><tr>'
     +'<th>Tanggal</th><th>Proyek</th><th>Kategori</th>'
     +'<th>Keterangan</th>'
     +'<th style="text-align:right">Jumlah</th><th>Jenis</th>'
@@ -912,17 +930,17 @@ function buildProjectFinance(d) {
   function computeAgg(projectList) {
     var nilaiKontrak=0, cashMasuk=0, transaksiKeluar=0, rencanaBiaya=0, realisasiBiaya=0;
     var pnSet = {};
-    projectList.forEach(function(p){ pnSet[get(p,'nama_proyek').trim()]=true; });
+    projectList.forEach(function(p){ pnSet[normName(get(p,'nama_proyek'))]=true; });
 
     projectList.forEach(function(p){ nilaiKontrak += toNum(get(p,'nilai_kontrak')); });
 
     d.termin.forEach(function(t){
-      var tp = get(t,'nama_proyek').trim();
+      var tp = normName(get(t,'nama_proyek'));
       if(pnSet[tp] && get(t,'status').trim()==='Lunas') cashMasuk += toNum(get(t,'nilai_bersih'));
     });
 
     d.budget.forEach(function(b){
-      var bp = get(b,'nama_proyek').trim();
+      var bp = normName(get(b,'nama_proyek'));
       if(pnSet[bp]) {
         rencanaBiaya   += toNum(get(b,'nilai_rencana'));
         realisasiBiaya += toNum(get(b,'nilai_realisasi'));
@@ -930,7 +948,7 @@ function buildProjectFinance(d) {
     });
 
     d.transaksi.forEach(function(t){
-      var tp = get(t,'nama_proyek').trim();
+      var tp = normName(get(t,'nama_proyek'));
       var jenis = get(t,'jenis').trim();
       var kat   = get(t,'kategori').trim();
       if(pnSet[tp] && jenis==='Keluar' && kat!=='Transfer') transaksiKeluar += toNum(get(t,'jumlah'));
@@ -950,7 +968,7 @@ function buildProjectFinance(d) {
   // ── Breakdown per kategori (Personel, Akomodasi, Alat, Marketing, Lainnya) ──
   function computeKategoriBreakdown(projectList) {
     var pnSet = {};
-    projectList.forEach(function(p){ pnSet[get(p,'nama_proyek').trim()]=true; });
+    projectList.forEach(function(p){ pnSet[normName(get(p,'nama_proyek'))]=true; });
 
     var katMap = {}; // {kategori: {rencana, realisasi, transaksiKeluar}}
     KATEGORI_LIST.forEach(function(k){ katMap[k]={rencana:0,realisasi:0,trx:0}; });
@@ -962,7 +980,7 @@ function buildProjectFinance(d) {
     }
 
     d.budget.forEach(function(b){
-      var bp = get(b,'nama_proyek').trim();
+      var bp = normName(get(b,'nama_proyek'));
       if(!pnSet[bp]) return;
       var k = resolveKat(get(b,'pos_biaya'));
       katMap[k].rencana   += toNum(get(b,'nilai_rencana'));
@@ -970,7 +988,7 @@ function buildProjectFinance(d) {
     });
 
     d.transaksi.forEach(function(t){
-      var tp = get(t,'nama_proyek').trim();
+      var tp = normName(get(t,'nama_proyek'));
       if(!pnSet[tp]) return;
       var jenis = get(t,'jenis').trim();
       var kat   = get(t,'kategori').trim();
@@ -1124,7 +1142,7 @@ function renderAll() {
     // ROW 6: Margin + Transaksi
     + '<div class="cgrid g2">'
     + '<div class="card"><div class="ctitle">Profit Margin per Proyek</div><div class="cw"><canvas id="cMargin"></canvas></div></div>'
-    + '<div class="card"><div class="ctitle">Transaksi Terbaru</div><div style="overflow-x:auto">'+buildTrx(d.transaksi)+'</div></div>'
+    + '<div class="card"><div class="ctitle">Semua Transaksi</div><div style="overflow:auto;max-height:420px">'+buildTrx(d.transaksi)+'</div></div>'
     + '</div>'
 
     // ROW 7: Saldo akun
