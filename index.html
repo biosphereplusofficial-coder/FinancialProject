@@ -889,6 +889,80 @@ function barRow(label, val, maxVal, color) {
   + '</div>';
 }
 
+function buildProjectFinance(d) {
+  if(!d.projects.length) return '<p style="font-size:11px;color:var(--tx2);padding:6px">Tidak ada proyek</p>';
+
+  var html = '<div style="display:flex;flex-direction:column;gap:14px">';
+
+  d.projects.forEach(function(p) {
+    var pn = get(p,'nama_proyek').trim();
+    var nilaiKontrak = toNum(get(p,'nilai_kontrak'));
+
+    // Cash masuk: termin yang sudah Lunas
+    var cashMasuk = 0;
+    d.termin.forEach(function(t){
+      if(get(t,'nama_proyek').trim()===pn && get(t,'status')==='Lunas') cashMasuk += toNum(get(t,'nilai_bersih'));
+    });
+
+    // Total budget rencana & realisasi (dari sheet Budget)
+    var rencanaBiaya = 0, realisasiBiaya = 0;
+    d.budget.forEach(function(b){
+      if(get(b,'nama_proyek').trim()===pn) {
+        rencanaBiaya   += toNum(get(b,'nilai_rencana'));
+        realisasiBiaya += toNum(get(b,'nilai_realisasi'));
+      }
+    });
+
+    // Transaksi keluar yang sudah benar2 dibayarkan (dari sheet Transaksi, jenis=Keluar, exclude transfer antar rekening sendiri)
+    var transaksiKeluar = 0;
+    d.transaksi.forEach(function(t){
+      if(get(t,'nama_proyek').trim()===pn && get(t,'jenis')==='Keluar' && get(t,'kategori')!=='Transfer') {
+        transaksiKeluar += toNum(get(t,'jumlah'));
+      }
+    });
+
+    var sisaKebutuhan = rencanaBiaya - realisasiBiaya;
+    if(sisaKebutuhan < 0) sisaKebutuhan = 0;
+    var cashTersisa = cashMasuk - transaksiKeluar;
+    var serapPct = rencanaBiaya ? Math.round(realisasiBiaya/rencanaBiaya*100) : 0;
+
+    var maxBar = Math.max(nilaiKontrak, cashMasuk, rencanaBiaya, 1);
+
+    function barRow(label, val, color, sub) {
+      var w = Math.round(val/maxBar*100);
+      return '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">'
+        +'<div style="width:110px;flex-shrink:0;font-size:10px;color:var(--tx2);text-align:right">'+label+'</div>'
+        +'<div style="flex:1;height:13px;background:var(--gray-l);border-radius:3px;overflow:hidden">'
+          +'<div style="height:100%;width:'+w+'%;background:'+color+';border-radius:3px"></div>'
+        +'</div>'
+        +'<div style="width:78px;flex-shrink:0;font-size:10px;font-weight:600;color:'+color+';text-align:right">'+idr(val)+'</div>'
+        +(sub?'<div style="width:50px;flex-shrink:0;font-size:9px;color:var(--tx2);text-align:right">'+sub+'</div>':'<div style="width:50px;flex-shrink:0"></div>')
+      +'</div>';
+    }
+
+    var cashColor = cashTersisa >= 0 ? '#3B6D11' : '#A32D2D';
+    var serapColor = serapPct>100?'#A32D2D':serapPct>70?'#633806':'#3B6D11';
+
+    html += '<div style="border:1px solid var(--border);border-radius:8px;padding:12px 14px">'
+      +'<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:9px">'
+        +'<div style="font-size:12px;font-weight:600;color:var(--tx)">'+get(p,'nama_proyek')+'</div>'
+        +'<div style="font-size:10px;color:var(--tx2)">Kontrak: <b style="color:var(--tx)">'+idr(nilaiKontrak)+'</b></div>'
+      +'</div>'
+      + barRow('Cash Masuk (Termin)', cashMasuk, '#27500A')
+      + barRow('Transaksi Keluar', transaksiKeluar, '#A32D2D')
+      + barRow('Realisasi Anggaran', realisasiBiaya, serapColor, serapPct+'%')
+      + barRow('Sisa Kebutuhan Budget', sisaKebutuhan, '#633806')
+      +'<div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;padding-top:8px;border-top:1px dashed var(--border)">'
+        +'<span style="font-size:10px;color:var(--tx2)">Cash tersisa di tangan (Cash masuk − Transaksi keluar)</span>'
+        +'<span style="font-size:13px;font-weight:700;color:'+cashColor+'">'+idr(cashTersisa)+'</span>'
+      +'</div>'
+    +'</div>';
+  });
+
+  html += '</div>';
+  return html;
+}
+
 // ═══════════════════════════════════════════════════════════════
 // RENDER
 // ═══════════════════════════════════════════════════════════════
@@ -993,6 +1067,13 @@ function renderAll() {
     + '<span style="font-size:10px;font-weight:400;color:var(--tx2)">Membandingkan transaksi tercatat vs saldo rekening aktual</span>'
     + '</div>'
     + buildRekonsiliasi(d, m)
+    + '</div></div>'
+
+    // KONDISI KEUANGAN PER PROYEK
+    + '<div class="cgrid" style="margin-top:0">'
+    + '<div class="card" style="border-left:4px solid #0C447C">'
+    + '<div class="ctitle">💼 Kondisi Keuangan per Proyek</div>'
+    + buildProjectFinance(d)
     + '</div></div>'
 
     + '</div>'; // end .body
