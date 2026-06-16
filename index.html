@@ -983,7 +983,8 @@ function buildProjectFinance(d) {
   // ── Aggregate across given list of projects (1 or many) ────────────────────
   function computeAgg(projectList) {
     var nilaiKontrak=0, cashMasuk=0, transaksiKeluar=0, rencanaBiaya=0, realisasiBiaya=0;
-    var sisaKebutuhan=0; // hanya dari baris budget status=open
+    var sisaKebutuhan=0;     // hanya dari baris budget status=open
+    var anggaranEfektif=0;   // closed: pakai realisasi (final) | open: pakai rencana (konservatif)
     var pnSet = {};
     projectList.forEach(function(p){ pnSet[normName(get(p,'nama_proyek'))]=true; });
 
@@ -994,8 +995,8 @@ function buildProjectFinance(d) {
       if(pnSet[tp] && get(t,'status').trim()==='Lunas') cashMasuk += toNum(get(t,'nilai_bersih'));
     });
 
-    // closed = pengeluaran sudah final (tidak nambah lagi) -> sisa kebutuhan 0
-    // open   = pengeluaran masih bisa nambah -> sisa kebutuhan = rencana - realisasi
+    // closed = pengeluaran sudah final (tidak nambah lagi) -> sisa kebutuhan 0, pakai realisasi
+    // open   = pengeluaran masih bisa nambah -> sisa kebutuhan = rencana - realisasi, pakai rencana
     d.budget.forEach(function(b){
       var bp = normName(get(b,'nama_proyek'));
       if(pnSet[bp]) {
@@ -1004,7 +1005,12 @@ function buildProjectFinance(d) {
         var status    = get(b,'status').trim().toLowerCase();
         rencanaBiaya   += rencana;
         realisasiBiaya += realisasi;
-        if(status!=='closed') sisaKebutuhan += Math.max(0, rencana - realisasi);
+        if(status==='closed') {
+          anggaranEfektif += realisasi;
+        } else {
+          anggaranEfektif += rencana;
+          sisaKebutuhan += Math.max(0, rencana - realisasi);
+        }
       }
     });
 
@@ -1017,11 +1023,12 @@ function buildProjectFinance(d) {
 
     var cashTersisa   = cashMasuk - transaksiKeluar;
     var serapPct      = rencanaBiaya ? Math.round(realisasiBiaya/rencanaBiaya*100) : 0;
+    var potensiProfit = nilaiKontrak - anggaranEfektif;
 
     return {
       nilaiKontrak:nilaiKontrak, cashMasuk:cashMasuk, transaksiKeluar:transaksiKeluar,
-      rencanaBiaya:rencanaBiaya, realisasiBiaya:realisasiBiaya,
-      sisaKebutuhan:sisaKebutuhan, cashTersisa:cashTersisa, serapPct:serapPct
+      rencanaBiaya:rencanaBiaya, realisasiBiaya:realisasiBiaya, anggaranEfektif:anggaranEfektif,
+      sisaKebutuhan:sisaKebutuhan, cashTersisa:cashTersisa, serapPct:serapPct, potensiProfit:potensiProfit
     };
   }
 
@@ -1065,8 +1072,9 @@ function buildProjectFinance(d) {
     barRow._max = Math.max(agg.nilaiKontrak, agg.cashMasuk, agg.rencanaBiaya, 1);
     // Cash tersisa = Cash Masuk - Realisasi Anggaran
     var cashTersisa = agg.cashMasuk - agg.realisasiBiaya;
-    var cashColor  = cashTersisa>=0 ? '#3B6D11' : '#A32D2D';
-    var serapColor = agg.serapPct>100?'#A32D2D':agg.serapPct>70?'#633806':'#3B6D11';
+    var cashColor   = cashTersisa>=0 ? '#3B6D11' : '#A32D2D';
+    var serapColor  = agg.serapPct>100?'#A32D2D':agg.serapPct>70?'#633806':'#3B6D11';
+    var potColor    = agg.potensiProfit>=0 ? '#0F6E56' : '#A32D2D';
     return '<div style="border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin-bottom:12px">'
       +'<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:9px">'
         +'<div style="font-size:12px;font-weight:600;color:var(--tx)">'+title+'</div>'
@@ -1075,6 +1083,7 @@ function buildProjectFinance(d) {
       + barRow('Cash Masuk (Termin)', agg.cashMasuk, '#27500A')
       + barRow('Realisasi Anggaran', agg.realisasiBiaya, serapColor, agg.serapPct+'%')
       + barRow('Sisa Kebutuhan (open)', agg.sisaKebutuhan, '#633806')
+      + barRow('Potensi Profit', agg.potensiProfit, potColor)
       +'<div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;padding-top:8px;border-top:1px dashed var(--border)">'
         +'<span style="font-size:10px;color:var(--tx2)">Cash tersisa di tangan (Cash masuk − Realisasi anggaran)</span>'
         +'<span style="font-size:13px;font-weight:700;color:'+cashColor+'">'+idr(cashTersisa)+'</span>'
