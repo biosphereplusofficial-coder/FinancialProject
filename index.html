@@ -1025,36 +1025,36 @@ function buildProjectFinance(d) {
     };
   }
 
-  // ── Breakdown per kategori (Personel, Akomodasi, Alat, Marketing, Lainnya) ──
+  // ── Breakdown per kategori — pakai nama pos_biaya apa adanya dari sheet Budget ──
   function computeKategoriBreakdown(projectList) {
     var pnSet = {};
     projectList.forEach(function(p){ pnSet[normName(get(p,'nama_proyek'))]=true; });
 
-    var katMap = {}; // {kategori: {rencana, realisasi, transaksiKeluar}}
-    KATEGORI_LIST.forEach(function(k){ katMap[k]={rencana:0,realisasi:0,trx:0}; });
-
-    function resolveKat(raw) {
-      raw = (raw||'').trim();
-      if(KATEGORI_LIST.indexOf(raw)>=0) return raw;
-      return 'Lainnya';
+    var katMap = {}; // {kategori: {rencana, realisasi, trx}}
+    function ensureKat(k) {
+      if(!katMap[k]) katMap[k] = {rencana:0, realisasi:0, trx:0};
+      return katMap[k];
     }
 
     d.budget.forEach(function(b){
       var bp = normName(get(b,'nama_proyek'));
       if(!pnSet[bp]) return;
-      var k = resolveKat(get(b,'pos_biaya'));
-      katMap[k].rencana   += toNum(get(b,'nilai_rencana'));
-      katMap[k].realisasi += toNum(get(b,'nilai_realisasi'));
+      var raw = (get(b,'pos_biaya')||'').trim();
+      var k = raw || 'Lainnya';
+      var row = ensureKat(k);
+      row.rencana   += toNum(get(b,'nilai_rencana'));
+      row.realisasi += toNum(get(b,'nilai_realisasi'));
     });
 
     d.transaksi.forEach(function(t){
       var tp = normName(get(t,'nama_proyek'));
       if(!pnSet[tp]) return;
       var jenis = get(t,'jenis').trim();
-      var kat   = get(t,'kategori').trim();
-      if(jenis==='Keluar' && kat!=='Transfer') {
-        var k = resolveKat(kat);
-        katMap[k].trx += toNum(get(t,'jumlah'));
+      var katRaw = (get(t,'kategori')||'').trim();
+      if(jenis==='Keluar' && katRaw!=='Transfer') {
+        var k = katRaw || 'Lainnya';
+        var row = ensureKat(k);
+        row.trx += toNum(get(t,'jumlah'));
       }
     });
 
@@ -1083,8 +1083,9 @@ function buildProjectFinance(d) {
   }
 
   function renderKategoriTable(katMap) {
-    var rows = KATEGORI_LIST.map(function(k){ return {k:k, v:katMap[k]}; })
+    var rows = Object.keys(katMap).map(function(k){ return {k:k, v:katMap[k]}; })
       .filter(function(r){ return r.v.rencana>0 || r.v.realisasi>0 || r.v.trx>0; });
+    rows.sort(function(a,b){ return (b.v.rencana+b.v.realisasi) - (a.v.rencana+a.v.realisasi); });
     if(!rows.length) return '';
 
     var html = '<div style="margin-top:4px">'
