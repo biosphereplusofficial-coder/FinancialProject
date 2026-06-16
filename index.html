@@ -1034,7 +1034,6 @@ function buildProjectFinance(d) {
         +'<th style="text-align:left;padding:5px 6px;font-size:10px;color:var(--tx2);border-bottom:1px solid var(--border)">Kategori</th>'
         +'<th style="text-align:right;padding:5px 6px;font-size:10px;color:var(--tx2);border-bottom:1px solid var(--border)">Rencana</th>'
         +'<th style="text-align:right;padding:5px 6px;font-size:10px;color:var(--tx2);border-bottom:1px solid var(--border)">Realisasi</th>'
-        +'<th style="text-align:right;padding:5px 6px;font-size:10px;color:var(--tx2);border-bottom:1px solid var(--border)">Transaksi</th>'
         +'<th style="text-align:right;padding:5px 6px;font-size:10px;color:var(--tx2);border-bottom:1px solid var(--border)">% Serap</th>'
       +'</tr></thead><tbody>';
 
@@ -1045,7 +1044,6 @@ function buildProjectFinance(d) {
         +'<td style="padding:6px 6px;border-bottom:1px solid var(--border)">'+r.k+'</td>'
         +'<td style="padding:6px 6px;text-align:right;border-bottom:1px solid var(--border);color:var(--tx2)">'+idr(r.v.rencana)+'</td>'
         +'<td style="padding:6px 6px;text-align:right;border-bottom:1px solid var(--border)">'+idr(r.v.realisasi)+'</td>'
-        +'<td style="padding:6px 6px;text-align:right;border-bottom:1px solid var(--border);color:var(--tx2)">'+idr(r.v.trx)+'</td>'
         +'<td style="padding:6px 6px;text-align:right;border-bottom:1px solid var(--border);font-weight:700;color:'+col+'">'+pct+'%</td>'
       +'</tr>';
     });
@@ -1127,10 +1125,10 @@ function renderAll() {
     + '<div class="card"><div class="ctitle">Komposisi Status Termin</div><div class="cws"><canvas id="cDonut"></canvas></div></div>'
     + '</div>'
 
-    // ROW 4: Revenue bar + Budget bar
-    + '<div class="cgrid g2">'
+    // ROW 4: Revenue bar + Kondisi Keuangan per Proyek
+    + '<div class="cgrid g21">'
     + '<div class="card"><div class="ctitle">Revenue vs Potensi per Proyek</div><div class="cw"><canvas id="cRev"></canvas></div></div>'
-    + '<div class="card"><div class="ctitle">Realisasi Anggaran per Pos</div><div id="budgetBars"></div></div>'
+    + '<div class="card" style="border-left:4px solid #0C447C"><div class="ctitle">💼 Kondisi Keuangan per Proyek</div>' + buildProjectFinance(d) + '</div>'
     + '</div>'
 
     // ROW 5: Termin table + Pinjaman
@@ -1166,13 +1164,6 @@ function renderAll() {
       }).join('')
     + '</div></div></div>'
 
-    // KONDISI KEUANGAN PER PROYEK (versi summary — single box)
-    + '<div class="cgrid" style="margin-top:0">'
-    + '<div class="card" style="border-left:4px solid #0C447C">'
-    + '<div class="ctitle">💼 Kondisi Keuangan per Proyek</div>'
-    + buildProjectFinance(d)
-    + '</div></div>'
-
     // REKONSILIASI BOX (paling bawah)
     + '<div class="cgrid" style="margin-top:0">'
     + '<div class="card" style="border-left:4px solid #633806">'
@@ -1188,10 +1179,6 @@ function renderAll() {
   // Render charts after DOM update
   setTimeout(function(){
     renderCharts(d, m);
-    var bb = document.getElementById('budgetBars');
-    if(bb) bb.innerHTML = buildBudgetBars(d.budget);
-    var cr = document.getElementById('cashRecon');
-    if(cr) cr.innerHTML = buildCashRecon(d);
   }, 80);
 }
 
