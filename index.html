@@ -574,6 +574,32 @@ function buildPinjaman(rows) {
   return html;
 }
 
+// Bangun daftar akun yang aman ditampilkan: skip baris kosong/blank dari
+// gviz export, dedupe kalau ada nama_akun yang sama (kebetulan ke-export 2x),
+// dan urutan tetap mengikuti urutan asli di sheet.
+function buildAkunList(rawAkun) {
+  var seen = {};
+  var out = [];
+  (rawAkun||[]).forEach(function(a){
+    var namaRaw = get(a,'nama_akun') || get(a,'akun_id') || '';
+    var nama = namaRaw.trim();
+    if(!nama) return; // skip baris kosong total
+    var key = normName(nama);
+    var aktual = toNum(get(a,'saldo_aktual'));
+    var awal   = toNum(get(a,'saldo_awal'));
+    if(seen[key] !== undefined) {
+      // Duplikat nama_akun — gabungkan (ambil saldo terbesar, asumsikan baris
+      // valid lebih lengkap datanya daripada baris kosong/parsial)
+      var idx = seen[key];
+      if(aktual > out[idx].aktual) { out[idx].aktual = aktual; out[idx].awal = awal; }
+      return;
+    }
+    seen[key] = out.length;
+    out.push({ nama: nama, aktual: aktual, awal: awal });
+  });
+  return out;
+}
+
 function buildTrx(rows) {
   if(!rows.length) return '<p style="font-size:11px;color:var(--tx2);padding:6px">Tidak ada transaksi</p>';
 
@@ -1216,18 +1242,14 @@ function renderAll() {
 
     // ROW 7: Saldo akun
     + '<div class="cgrid">'
-    + '<div class="card"><div class="ctitle">Saldo Rekening</div>'
+    + '<div class="card"><div class="ctitle">Saldo Rekening <span style="font-weight:400;color:var(--tx2)">('+buildAkunList(d.akun).length+' rekening)</span></div>'
     + '<div class="acgrid">'
-    + d.akun.map(function(a){
-        // Exact columns: Akun_id, Nama_Akun, Saldo Awal, Saldo Aktual
-        var nama   = get(a,'nama_akun')  || get(a,'Nama_Akun')  || get(a,'akun_id') || '';
-        var aktual = toNum(get(a,'saldo_aktual') || get(a,'Saldo Aktual') || 0);
-        var awal   = toNum(get(a,'saldo_awal')   || get(a,'Saldo Awal')   || 0);
-        var diff = aktual - awal;
+    + buildAkunList(d.akun).map(function(a){
+        var diff = a.aktual - a.awal;
         var diffColor = diff >= 0 ? 'var(--green2)' : 'var(--red)';
         return '<div class="acard">'
-          +'<div style="font-size:10px;color:var(--tx2);margin-bottom:3px">'+nama+'</div>'
-          +'<div style="font-size:15px;font-weight:600">'+idr(aktual)+'</div>'
+          +'<div style="font-size:10px;color:var(--tx2);margin-bottom:3px">'+a.nama+'</div>'
+          +'<div style="font-size:15px;font-weight:600">'+idr(a.aktual)+'</div>'
           +'<div style="font-size:10px;color:'+diffColor+';margin-top:2px">'
             +(diff>=0?'▲ +':'▼ ')+idr(diff)+' dari awal'
           +'</div>'
