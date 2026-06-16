@@ -434,46 +434,61 @@ function getFiltered() {
 // ═══════════════════════════════════════════════════════════════
 function computeMetrics(d) {
   var revenue=0, potRev=0, realBiaya=0, rencanaBiaya=0;
+  var anggaranEfektif=0, sisaKebutuhanTotal=0;
   var totalPinj=0, sisaHutang=0, retensi=0, retensiCair=0;
   var pending=0, outstanding=0;
 
   // Termin: nilai_bersih, status
   d.termin.forEach(function(t) {
-    var nb = toNum(t.nilai_bersih);
-    if(t.status==='Lunas')       { revenue += nb; }
-    if(t.status==='Sudah tagih')   outstanding += nb;
+    var nb = toNum(get(t,'nilai_bersih'));
+    var st = get(t,'status').trim();
+    if(st==='Lunas')        { revenue += nb; }
+    if(st==='Sudah tagih')    outstanding += nb;
   });
 
   // Projects: nilai_kontrak
-  d.projects.forEach(function(p){ potRev += toNum(p.nilai_kontrak); });
+  d.projects.forEach(function(p){ potRev += toNum(get(p,'nilai_kontrak')); });
 
-  // Budget: nilai_rencana, nilai_realisasi
+  // Budget: nilai_rencana, nilai_realisasi, status (open/closed)
+  // closed = sudah final, tidak akan ada pengeluaran lagi -> anggaran efektif = realisasi, sisa kebutuhan = 0
+  // open   = pengeluaran masih bisa bertambah -> anggaran efektif = rencana, sisa kebutuhan = rencana - realisasi
   d.budget.forEach(function(b){
-    realBiaya    += toNum(b.nilai_realisasi);
-    rencanaBiaya += toNum(b.nilai_rencana);
+    var rencana   = toNum(get(b,'nilai_rencana'));
+    var realisasi = toNum(get(b,'nilai_realisasi'));
+    var status    = get(b,'status').trim().toLowerCase();
+    realBiaya    += realisasi;
+    rencanaBiaya += rencana;
+    if(status==='closed') {
+      anggaranEfektif    += realisasi;
+      // sisa kebutuhan = 0, sudah final
+    } else {
+      anggaranEfektif    += rencana;
+      sisaKebutuhanTotal += Math.max(0, rencana - realisasi);
+    }
   });
 
   // Pinjaman: jumlah_pinjaman, sisa_hutang
   d.pinjaman.forEach(function(p){
-    totalPinj  += toNum(p.jumlah_pinjaman);
-    sisaHutang += toNum(p.sisa_hutang);
+    totalPinj  += toNum(get(p,'jumlah_pinjaman'));
+    sisaHutang += toNum(get(p,'sisa_hutang'));
   });
 
   // Transaksi: status (no Draft in current data — use jenis=Keluar without status as pending)
   d.transaksi.forEach(function(t){
-    if(t.status==='Draft') pending++;
+    if(get(t,'status')==='Draft') pending++;
   });
 
   var totalSaldo = (d.akun||[]).reduce(function(s,a){ return s+toNum(get(a,'saldo_aktual')); },0);
   return {
     revenue:revenue, potRev:potRev,
     realBiaya:realBiaya, rencanaBiaya:rencanaBiaya,
-    profit:revenue-realBiaya, potProfit:potRev-rencanaBiaya,
+    anggaranEfektif:anggaranEfektif, sisaKebutuhanTotal:sisaKebutuhanTotal,
+    profit:revenue-realBiaya, potProfit:potRev-anggaranEfektif,
     totalPinj:totalPinj, sisaHutang:sisaHutang,
     retensi:retensi, retensiCair:retensiCair,
     pending:pending, outstanding:outstanding, totalSaldo:totalSaldo,
     mAkt: revenue ? Math.round((revenue-realBiaya)/revenue*100) : 0,
-    mPot: potRev  ? Math.round((potRev-rencanaBiaya)/potRev*100)  : 0,
+    mPot: potRev  ? Math.round((potRev-anggaranEfektif)/potRev*100)  : 0,
   };
 }
 
@@ -968,6 +983,7 @@ function buildProjectFinance(d) {
   // ── Aggregate across given list of projects (1 or many) ────────────────────
   function computeAgg(projectList) {
     var nilaiKontrak=0, cashMasuk=0, transaksiKeluar=0, rencanaBiaya=0, realisasiBiaya=0;
+    var sisaKebutuhan=0; // hanya dari baris budget status=open
     var pnSet = {};
     projectList.forEach(function(p){ pnSet[normName(get(p,'nama_proyek'))]=true; });
 
@@ -978,11 +994,17 @@ function buildProjectFinance(d) {
       if(pnSet[tp] && get(t,'status').trim()==='Lunas') cashMasuk += toNum(get(t,'nilai_bersih'));
     });
 
+    // closed = pengeluaran sudah final (tidak nambah lagi) -> sisa kebutuhan 0
+    // open   = pengeluaran masih bisa nambah -> sisa kebutuhan = rencana - realisasi
     d.budget.forEach(function(b){
       var bp = normName(get(b,'nama_proyek'));
       if(pnSet[bp]) {
-        rencanaBiaya   += toNum(get(b,'nilai_rencana'));
-        realisasiBiaya += toNum(get(b,'nilai_realisasi'));
+        var rencana   = toNum(get(b,'nilai_rencana'));
+        var realisasi = toNum(get(b,'nilai_realisasi'));
+        var status    = get(b,'status').trim().toLowerCase();
+        rencanaBiaya   += rencana;
+        realisasiBiaya += realisasi;
+        if(status!=='closed') sisaKebutuhan += Math.max(0, rencana - realisasi);
       }
     });
 
@@ -993,7 +1015,6 @@ function buildProjectFinance(d) {
       if(pnSet[tp] && jenis==='Keluar' && kat!=='Transfer') transaksiKeluar += toNum(get(t,'jumlah'));
     });
 
-    var sisaKebutuhan = Math.max(0, rencanaBiaya - realisasiBiaya);
     var cashTersisa   = cashMasuk - transaksiKeluar;
     var serapPct      = rencanaBiaya ? Math.round(realisasiBiaya/rencanaBiaya*100) : 0;
 
@@ -1053,7 +1074,7 @@ function buildProjectFinance(d) {
       +'</div>'
       + barRow('Cash Masuk (Termin)', agg.cashMasuk, '#27500A')
       + barRow('Realisasi Anggaran', agg.realisasiBiaya, serapColor, agg.serapPct+'%')
-      + barRow('Sisa Kebutuhan Budget', agg.sisaKebutuhan, '#633806')
+      + barRow('Sisa Kebutuhan (open)', agg.sisaKebutuhan, '#633806')
       +'<div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;padding-top:8px;border-top:1px dashed var(--border)">'
         +'<span style="font-size:10px;color:var(--tx2)">Cash tersisa di tangan (Cash masuk − Realisasi anggaran)</span>'
         +'<span style="font-size:13px;font-weight:700;color:'+cashColor+'">'+idr(cashTersisa)+'</span>'
