@@ -1190,6 +1190,31 @@ function renderAll() {
   // Debug info
   // TEMP DEBUG: cek transaksi Reklame Pulau Batam
   var debugHtml = '';
+  if(window.location.search.indexOf('inspect=termin')>=0) {
+    var pnameSet = {};
+    d.projects.forEach(function(p){ pnameSet[normName(get(p,'nama_proyek'))] = get(p,'nama_proyek'); });
+    function charCodes(s) {
+      return String(s).split('').map(function(c){ return c.charCodeAt(0); }).join(',');
+    }
+    var rowsHtml = (D.termin||[]).map(function(t){
+      var raw = get(t,'nama_proyek');
+      var norm = normName(raw);
+      var matched = !!pnameSet[norm];
+      return '<tr style="background:'+(matched?'transparent':'#FCEBEB')+'">'
+        +'<td style="padding:3px 6px">'+get(t,'termin_id')+'</td>'
+        +'<td style="padding:3px 6px">"'+raw+'"</td>'
+        +'<td style="padding:3px 6px;font-family:monospace;font-size:9px">'+charCodes(raw)+'</td>'
+        +'<td style="padding:3px 6px">'+get(t,'status')+'</td>'
+        +'<td style="padding:3px 6px;font-weight:700;color:'+(matched?'#27500A':'#A32D2D')+'">'+(matched?'✓ MATCH':'✗ NO MATCH')+'</td>'
+      +'</tr>';
+    }).join('');
+    debugHtml = '<div style="background:#FFFBEB;border:1px solid #FDE68A;padding:10px;margin-bottom:12px;font-size:11px;overflow-x:auto">'
+      +'<b>🔍 Debug: inspeksi nama_proyek per baris Termin (raw D.termin, semua proyek diketahui: '+Object.keys(pnameSet).length+')</b>'
+      +'<table style="width:100%;margin-top:6px;border-collapse:collapse"><thead><tr style="font-weight:600">'
+      +'<td style="padding:3px 6px">termin_id</td><td style="padding:3px 6px">nama_proyek (raw)</td>'
+      +'<td style="padding:3px 6px">char codes</td><td style="padding:3px 6px">status</td><td style="padding:3px 6px">match?</td>'
+      +'</tr></thead><tbody>'+rowsHtml+'</tbody></table></div>';
+  }
   if(isLive && window.location.search.indexOf('debug')>=0) {
     var sample = d.transaksi.slice(0,5).map(function(t){
       return 'proj=['+get(t,'nama_proyek')+'] jenis=['+get(t,'jenis')+'] kat=['+get(t,'kategori')+'] jml=['+get(t,'jumlah')+'] toNum='+toNum(get(t,'jumlah'));
