@@ -1218,33 +1218,33 @@ function renderAll() {
     + metricCard('Transaksi Pending','Menunggu approval', m.pending+' transaksi', 'Outstanding: <b>'+idr(m.outstanding)+'</b>', '#A32D2D')
     + '</div>'
 
-    // ROW 3: Waterfall + Donut
-    + '<div class="cgrid g21">'
+    // ROW 3: Kondisi Keuangan per Proyek + Semua Transaksi (status proyek)
+    + '<div class="cgrid g2">'
+    + '<div class="card" style="border-left:4px solid #0C447C"><div class="ctitle">💼 Kondisi Keuangan per Proyek</div>' + buildProjectFinance(d) + '</div>'
+    + '<div class="card"><div class="ctitle">Semua Transaksi</div><div style="overflow:auto;max-height:420px">'+buildTrx(d.transaksi)+'</div></div>'
+    + '</div>'
+
+    // ROW 4: Revenue vs Potensi + Waterfall (revenue dengan revenue)
+    + '<div class="cgrid g2">'
+    + '<div class="card"><div class="ctitle">Revenue vs Potensi per Proyek</div><div class="cw"><canvas id="cRev"></canvas></div></div>'
     + '<div class="card"><div class="ctitle">Waterfall — Revenue ke Profit</div>'
     + buildWaterfall(m)
     + '<div class="lgw">'
     + lgHtml('#3B6D11','Revenue Cair') + lgHtml('#B4B2A9','Potensi') + lgHtml('#EF9F27','Realisasi Biaya')
     + lgHtml('#534AB7','Profit Aktual') + lgHtml('#0F6E56','Potensi Profit')
     + '</div></div>'
+    + '</div>'
+
+    // ROW 5: Status Termin + Komposisi Status Termin (termin dengan komposisi status termin)
+    + '<div class="cgrid g21">'
+    + '<div class="card"><div class="ctitle">Status Termin</div><div style="overflow-x:auto">'+buildTerminTable(d.termin)+'</div></div>'
     + '<div class="card"><div class="ctitle">Komposisi Status Termin</div><div class="cws"><canvas id="cDonut"></canvas></div></div>'
     + '</div>'
 
-    // ROW 4: Revenue bar + Kondisi Keuangan per Proyek
-    + '<div class="cgrid g21">'
-    + '<div class="card"><div class="ctitle">Revenue vs Potensi per Proyek</div><div class="cw"><canvas id="cRev"></canvas></div></div>'
-    + '<div class="card" style="border-left:4px solid #0C447C"><div class="ctitle">💼 Kondisi Keuangan per Proyek</div>' + buildProjectFinance(d) + '</div>'
-    + '</div>'
-
-    // ROW 5: Termin table + Pinjaman
+    // ROW 6: Status Pinjaman Investor + Profit Margin per Proyek (hutang pinjaman)
     + '<div class="cgrid g2">'
-    + '<div class="card"><div class="ctitle">Status Termin</div><div style="overflow-x:auto">'+buildTerminTable(d.termin)+'</div></div>'
     + '<div class="card"><div class="ctitle">Status Pinjaman Investor</div>'+buildPinjaman(d.pinjaman)+'</div>'
-    + '</div>'
-
-    // ROW 6: Margin + Transaksi
-    + '<div class="cgrid g2">'
     + '<div class="card"><div class="ctitle">Profit Margin per Proyek</div><div class="cw"><canvas id="cMargin"></canvas></div></div>'
-    + '<div class="card"><div class="ctitle">Semua Transaksi</div><div style="overflow:auto;max-height:420px">'+buildTrx(d.transaksi)+'</div></div>'
     + '</div>'
 
     // ROW 7: Saldo akun
