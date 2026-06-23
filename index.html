@@ -141,6 +141,7 @@ const SHEETS = [
   {name:'pinjaman',      gid:'421562363'},
   {name:'profitsharing', gid:'2010155024'},
   {name:'akun',          gid:'1111734438'},
+  {name:'sdm',           gid:'SDM_GID_PLACEHOLDER'},   // ← ganti setelah buat sheet SDM
 ];
 
 // ═══════════════════════════════════════════════════════════════
@@ -428,6 +429,7 @@ function getFiltered() {
     termin:    (D.termin||[]).filter(byName),
     pinjaman:  (D.pinjaman||[]).filter(byNameOrId),
     akun:      D.akun || [],
+    sdm:       (D.sdm||[]).filter(byName),
   };
 }
 
@@ -895,6 +897,131 @@ function buildRekonsiliasi(d, m) {
   return html;
 }
 
+// ═══════════════════════════════════════════════════════════════
+// SDM — MANAJEMEN SUMBER DAYA MANUSIA
+// ═══════════════════════════════════════════════════════════════
+function buildSDM(d) {
+  var rows = d.sdm || [];
+  if (!rows.length) return '<p style="font-size:11px;color:var(--tx2);padding:8px 0">Belum ada data SDM. Tambahkan baris di sheet <b>SDM</b> Google Sheets.</p>';
+
+  // ── Ringkasan agregat ────────────────────────────────────────
+  var totalKontrak = 0, totalDibayar = 0, totalOrang = 0;
+  var namaSet = {};
+  rows.forEach(function(r) {
+    totalKontrak += toNum(get(r,'nilai_kontrak_sdm'));
+    totalDibayar += toNum(get(r,'sudah_dibayar'));
+    var nm = normName(get(r,'nama_personel'));
+    if (nm && !namaSet[nm]) { namaSet[nm] = true; totalOrang++; }
+  });
+  var totalSisa = totalKontrak - totalDibayar;
+  var pctBayar  = totalKontrak ? Math.round(totalDibayar / totalKontrak * 100) : 0;
+  var pctColor  = pctBayar > 90 ? '#27500A' : pctBayar > 50 ? '#633806' : '#A32D2D';
+
+  // ── Group by proyek supaya mudah dibaca ──────────────────────
+  var groups = {}, gOrder = [];
+  rows.forEach(function(r) {
+    var pn = get(r,'nama_proyek') || '— Tanpa Proyek —';
+    if (!groups[pn]) { groups[pn] = []; gOrder.push(pn); }
+    groups[pn].push(r);
+  });
+
+  // ── Render ───────────────────────────────────────────────────
+  var html = '';
+
+  // Ringkasan bar di atas
+  html += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px;padding-bottom:14px;border-bottom:1px solid var(--border)">'
+    + sdmStat('👥 Total Personel', totalOrang + ' orang', '#0C447C')
+    + sdmStat('📋 Total Nilai SDM', idr(totalKontrak), '#633806')
+    + sdmStat('✅ Sudah Dibayar', idr(totalDibayar) + ' <span style="color:'+pctColor+';font-size:9px">('+pctBayar+'%)</span>', '#27500A')
+    + sdmStat('⏳ Sisa Tagihan', idr(totalSisa), totalSisa > 0 ? '#A32D2D' : '#27500A')
+    + '</div>';
+
+  // Tabel per proyek
+  gOrder.forEach(function(pn) {
+    var pRows = groups[pn];
+    var pKontrak = 0, pDibayar = 0;
+    pRows.forEach(function(r) {
+      pKontrak += toNum(get(r,'nilai_kontrak_sdm'));
+      pDibayar += toNum(get(r,'sudah_dibayar'));
+    });
+    var pPct = pKontrak ? Math.round(pDibayar/pKontrak*100) : 0;
+    var pCol = pPct>=100?'#27500A':pPct>=50?'#633806':'#A32D2D';
+
+    html += '<div style="margin-bottom:16px">'
+      // Proyek header
+      + '<div style="display:flex;justify-content:space-between;align-items:center;'
+        + 'padding:6px 10px;background:var(--gray-l);border-radius:6px;margin-bottom:6px">'
+        + '<span style="font-size:11px;font-weight:600;color:var(--tx)">'+pn+'</span>'
+        + '<span style="font-size:10px;color:var(--tx2)">'
+          + pRows.length+' personel &nbsp;·&nbsp; '
+          + 'Dibayar <b style="color:'+pCol+'">'+idr(pDibayar)+'</b>'
+          + ' / '+idr(pKontrak)
+          + ' <b style="color:'+pCol+'">('+pPct+'%)</b>'
+        + '</span>'
+      + '</div>'
+      // Baris per orang
+      + '<table style="width:100%;border-collapse:collapse">'
+      + '<thead><tr style="font-size:10px;color:var(--tx2)">'
+        + '<th style="padding:4px 8px;text-align:left;font-weight:500;border-bottom:1px solid var(--border)">Nama</th>'
+        + '<th style="padding:4px 8px;text-align:left;font-weight:500;border-bottom:1px solid var(--border)">Peran</th>'
+        + '<th style="padding:4px 8px;text-align:left;font-weight:500;border-bottom:1px solid var(--border)">Tipe</th>'
+        + '<th style="padding:4px 8px;text-align:right;font-weight:500;border-bottom:1px solid var(--border)">Nilai Kontrak</th>'
+        + '<th style="padding:4px 8px;text-align:right;font-weight:500;border-bottom:1px solid var(--border)">Dibayar</th>'
+        + '<th style="padding:4px 8px;text-align:right;font-weight:500;border-bottom:1px solid var(--border)">Sisa</th>'
+        + '<th style="padding:4px 8px;text-align:center;font-weight:500;border-bottom:1px solid var(--border)">Progress</th>'
+        + '<th style="padding:4px 8px;text-align:center;font-weight:500;border-bottom:1px solid var(--border)">Status</th>'
+      + '</tr></thead><tbody>';
+
+    pRows.forEach(function(r) {
+      var kontrak = toNum(get(r,'nilai_kontrak_sdm'));
+      var dibayar = toNum(get(r,'sudah_dibayar'));
+      var sisa    = kontrak - dibayar;
+      var pct     = kontrak ? Math.round(dibayar/kontrak*100) : 0;
+      var barCol  = pct>=100?'#27500A':pct>=50?'#3B6D11':'#EF9F27';
+      var status  = (get(r,'status')||'').trim();
+      var sPill   = status==='Aktif' ? 'background:#EAF3DE;color:#27500A'
+                  : status==='Selesai' ? 'background:#E6F1FB;color:#0C447C'
+                  : 'background:#FEF3C7;color:#92400E';
+      var tipe    = get(r,'tipe')||'';
+      var tPill   = tipe==='Tim Inti Proyek'
+                    ? 'background:#EDE9FE;color:#4C1D95'
+                    : 'background:#FEF3C7;color:#92400E';
+
+      html += '<tr style="border-bottom:1px solid var(--border)">'
+        + '<td style="padding:7px 8px;font-size:11px;font-weight:500">'+get(r,'nama_personel')+'</td>'
+        + '<td style="padding:7px 8px;font-size:11px;color:var(--tx2)">'+get(r,'peran')+'</td>'
+        + '<td style="padding:7px 8px">'
+            + '<span style="font-size:9px;padding:2px 6px;border-radius:10px;font-weight:600;'+tPill+'">'+tipe+'</span>'
+          + '</td>'
+        + '<td style="padding:7px 8px;text-align:right;font-size:11px">'+idr(kontrak)+'</td>'
+        + '<td style="padding:7px 8px;text-align:right;font-size:11px;color:#27500A;font-weight:500">'+idr(dibayar)+'</td>'
+        + '<td style="padding:7px 8px;text-align:right;font-size:11px;color:'+(sisa>0?'#A32D2D':'#27500A')+';font-weight:500">'+idr(sisa)+'</td>'
+        // Progress bar mini
+        + '<td style="padding:7px 8px;min-width:70px">'
+            + '<div style="background:var(--gray-l);border-radius:3px;height:6px;overflow:hidden">'
+              + '<div style="height:100%;width:'+Math.min(100,pct)+'%;background:'+barCol+';border-radius:3px"></div>'
+            + '</div>'
+            + '<div style="font-size:9px;color:var(--tx2);text-align:center;margin-top:2px">'+pct+'%</div>'
+          + '</td>'
+        + '<td style="padding:7px 8px;text-align:center">'
+            + '<span style="font-size:9px;padding:2px 8px;border-radius:10px;font-weight:600;'+sPill+'">'+status+'</span>'
+          + '</td>'
+        + '</tr>';
+    });
+
+    html += '</tbody></table></div>';
+  });
+
+  return html;
+}
+
+function sdmStat(label, val, color) {
+  return '<div style="background:var(--gray-l);border-radius:8px;padding:10px 12px">'
+    + '<div style="font-size:10px;color:var(--tx2);margin-bottom:4px">'+label+'</div>'
+    + '<div style="font-size:13px;font-weight:700;color:'+color+'">'+val+'</div>'
+    + '</div>';
+}
+
 function buildKondisiProyek(d) {
   if(!d.projects.length) return '<p style="font-size:11px;color:var(--tx2);padding:6px">Tidak ada proyek</p>';
 
@@ -1289,6 +1416,16 @@ function renderAll() {
           +'</div>';
       }).join('')
     + '</div></div></div>'
+
+    // ROW SDM: Manajemen SDM
+    + '<div class="cgrid" style="margin-top:0">'
+    + '<div class="card" style="border-left:4px solid #4C1D95">'
+    + '<div class="ctitle" style="display:flex;justify-content:space-between;align-items:center">'
+    + '<span>👥 Manajemen SDM & Manfaat Personel</span>'
+    + '<span style="font-size:10px;font-weight:400;color:var(--tx2)">'+(d.sdm&&d.sdm.length?d.sdm.length+' personel aktif':'—')+'</span>'
+    + '</div>'
+    + buildSDM(d)
+    + '</div></div>'
 
     // REKONSILIASI BOX (paling bawah)
     + '<div class="cgrid" style="margin-top:0">'
