@@ -987,16 +987,13 @@ function buildSDM(d) {
                     ? 'background:#EDE9FE;color:#4C1D95'
                     : 'background:#FEF3C7;color:#92400E';
 
+      var catatan = get(r,'catatan')||'';
       html += '<tr style="border-bottom:1px solid var(--border)">'
         + '<td style="padding:7px 8px;font-size:11px;font-weight:500">'+get(r,'nama_personel')+'</td>'
         + '<td style="padding:7px 8px;font-size:11px;color:var(--tx2)">'+get(r,'peran')+'</td>'
-        + '<td style="padding:7px 8px">'
-            + '<span style="font-size:9px;padding:2px 6px;border-radius:10px;font-weight:600;'+tPill+'">'+tipe+'</span>'
-          + '</td>'
         + '<td style="padding:7px 8px;text-align:right;font-size:11px">'+idr(kontrak)+'</td>'
         + '<td style="padding:7px 8px;text-align:right;font-size:11px;color:#27500A;font-weight:500">'+idr(dibayar)+'</td>'
         + '<td style="padding:7px 8px;text-align:right;font-size:11px;color:'+(sisa>0?'#A32D2D':'#27500A')+';font-weight:500">'+idr(sisa)+'</td>'
-        // Progress bar mini
         + '<td style="padding:7px 8px;min-width:70px">'
             + '<div style="background:var(--gray-l);border-radius:3px;height:6px;overflow:hidden">'
               + '<div style="height:100%;width:'+Math.min(100,pct)+'%;background:'+barCol+';border-radius:3px"></div>'
@@ -1006,6 +1003,7 @@ function buildSDM(d) {
         + '<td style="padding:7px 8px;text-align:center">'
             + '<span style="font-size:9px;padding:2px 8px;border-radius:10px;font-weight:600;'+sPill+'">'+status+'</span>'
           + '</td>'
+        + '<td style="padding:7px 8px;font-size:10px;color:var(--tx2)">'+catatan+'</td>'
         + '</tr>';
     });
 
