@@ -131,16 +131,26 @@ footer a{color:var(--green)}
     <option value="all">Semua Proyek</option>
   </select>
 </div>
-
+<div id="dashboard"></div>
 </div><!-- /pageKeuangan -->
 
 <div id="pageSDM" style="display:none">
+  <div class="fbar">
+    <label>Tahun</label>
+    <select id="sYearSDM" onchange="renderSDM()">
+      <option value="all">Semua</option>
+      <option value="2025">2025</option>
+      <option value="2026" selected>2026</option>
+    </select>
+    <label>Proyek</label>
+    <select id="sProjSDM" onchange="renderSDM()">
+      <option value="all">Semua Proyek</option>
+    </select>
+  </div>
   <div class="body" style="padding-top:14px">
     <div id="sdmContent"></div>
   </div>
 </div>
-
-<div id="dashboard"></div>
 
 <footer id="footer" style="display:none">
   LabERP Dashboard v1.2 &mdash;
@@ -1344,8 +1354,28 @@ function switchTab(tab) {
 }
 
 function renderSDM() {
-  var d = getFiltered();
-  var sdmCount = d.sdm ? d.sdm.length : 0;
+  // Sync project dropdown SDM dengan data yang ada
+  var sProjSDM = document.getElementById('sProjSDM');
+  if(sProjSDM && sProjSDM.options.length <= 1 && D.projects) {
+    D.projects.forEach(function(p){
+      var n = get(p,'nama_proyek');
+      if(!n) return;
+      var opt = document.createElement('option');
+      opt.value = n; opt.textContent = n;
+      sProjSDM.appendChild(opt);
+    });
+  }
+
+  // Filter SDM berdasarkan dropdown SDM sendiri
+  var yearVal = (document.getElementById('sYearSDM')||{}).value || 'all';
+  var projVal = (document.getElementById('sProjSDM')||{}).value || 'all';
+
+  var sdmRows = (D.sdm||[]).filter(function(r){
+    if(projVal !== 'all' && normName(get(r,'nama_proyek')) !== normName(projVal)) return false;
+    return true;
+  });
+
+  var sdmCount = sdmRows.length;
   document.getElementById('sdmContent').innerHTML =
     '<div class="cgrid" style="margin-top:0">'
     + '<div class="card" style="border-left:4px solid #4C1D95">'
@@ -1353,7 +1383,7 @@ function renderSDM() {
     + '<span>👥 Manajemen SDM & Manfaat Personel</span>'
     + '<span style="font-size:10px;font-weight:400;color:var(--tx2)">'+(sdmCount ? sdmCount+' baris' : '—')+'</span>'
     + '</div>'
-    + buildSDM(d)
+    + buildSDM({sdm: sdmRows, projects: D.projects||[]})
     + '</div></div>';
 }
 
