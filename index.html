@@ -338,9 +338,10 @@ function metricCard(label, sub, val, note, color) {
 // FETCH
 // ═══════════════════════════════════════════════════════════════
 function fetchSheet(name, gid) {
+  var cb = '&_cb=' + Date.now();
   var urls = [
-    'https://docs.google.com/spreadsheets/d/'+SID+'/gviz/tq?tqx=out:csv&gid='+gid,
-    'https://docs.google.com/spreadsheets/d/'+SID+'/export?format=csv&gid='+gid,
+    'https://docs.google.com/spreadsheets/d/'+SID+'/gviz/tq?tqx=out:csv&gid='+gid+cb,
+    'https://docs.google.com/spreadsheets/d/'+SID+'/export?format=csv&gid='+gid+cb,
   ];
   return new Promise(function(resolve) {
     var tried = 0;
@@ -687,6 +688,15 @@ function buildPinjaman(rows) {
 // Bangun daftar akun yang aman ditampilkan: skip baris kosong/blank dari
 // gviz export, dedupe kalau ada nama_akun yang sama (kebetulan ke-export 2x),
 // dan urutan tetap mengikuti urutan asli di sheet.
+function getCekDate(a){
+  var cand = ['tanggal_cek','tgl_cek','tanggal_cek_poin','tgl_cek_poin','tanggal_cekpoin','tgl_cekpoin','tanggal_checkpoint','tgl_checkpoint','checkpoint','cek_poin','tgl_cekpoint','tanggal_cek_point'];
+  for(var i=0;i<cand.length;i++){
+    var v = get(a, cand[i]);
+    if(v!==undefined && v!==null && String(v).trim()!=='') return String(v).trim();
+  }
+  return '';
+}
+
 function buildAkunList(rawAkun) {
   var seen = {};
   var out = [];
@@ -697,15 +707,16 @@ function buildAkunList(rawAkun) {
     var key = normName(nama);
     var aktual = toNum(get(a,'saldo_aktual'));
     var awal   = toNum(get(a,'saldo_awal'));
+    var cek    = getCekDate(a);
     if(seen[key] !== undefined) {
       // Duplikat nama_akun — gabungkan (ambil saldo terbesar, asumsikan baris
       // valid lebih lengkap datanya daripada baris kosong/parsial)
       var idx = seen[key];
-      if(aktual > out[idx].aktual) { out[idx].aktual = aktual; out[idx].awal = awal; }
+      if(aktual > out[idx].aktual) { out[idx].aktual = aktual; out[idx].awal = awal; out[idx].cek = cek; }
       return;
     }
     seen[key] = out.length;
-    out.push({ nama: nama, aktual: aktual, awal: awal });
+    out.push({ nama: nama, aktual: aktual, awal: awal, cek: cek });
   });
   return out;
 }
@@ -1744,12 +1755,14 @@ function renderAll() {
     + buildAkunList(d.akun).map(function(a){
         var diff = a.aktual - a.awal;
         var diffColor = diff >= 0 ? 'var(--green2)' : 'var(--red)';
+        var cekLine = a.cek ? ('<div style="font-size:9px;color:var(--tx2);margin-top:4px;border-top:1px dashed var(--border);padding-top:3px">📌 cek poin: <b>'+a.cek+'</b>'+(a.awal?' &middot; awal '+idr(a.awal):'')+'</div>') : '';
         return '<div class="acard">'
           +'<div style="font-size:10px;color:var(--tx2);margin-bottom:3px">'+a.nama+'</div>'
           +'<div style="font-size:15px;font-weight:600">'+idr(a.aktual)+'</div>'
           +'<div style="font-size:10px;color:'+diffColor+';margin-top:2px">'
-            +(diff>=0?'▲ +':'▼ ')+idr(diff)+' dari awal'
+            +(diff>=0?'▲ +':'▼ ')+idr(diff)+' sejak cek poin'
           +'</div>'
+          + cekLine
           +'</div>';
       }).join('')
     + '</div></div></div>'
