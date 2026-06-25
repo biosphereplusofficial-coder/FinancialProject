@@ -105,18 +105,39 @@ footer a{color:var(--green)}
   </div>
 </div>
 
+<!-- TAB NAVIGATION -->
+<div id="tabNav" style="display:flex;gap:0;border-bottom:2px solid var(--border);padding:0 18px;background:#fff">
+  <button id="tabKeuangan" onclick="switchTab('keuangan')"
+    style="padding:10px 20px;border:none;background:none;font-size:13px;font-weight:600;cursor:pointer;color:var(--green);border-bottom:2px solid var(--green);margin-bottom:-2px;font-family:inherit">
+    💰 Keuangan
+  </button>
+  <button id="tabSDM" onclick="switchTab('sdm')"
+    style="padding:10px 20px;border:none;background:none;font-size:13px;font-weight:600;cursor:pointer;color:var(--tx2);border-bottom:2px solid transparent;margin-bottom:-2px;font-family:inherit">
+    👥 SDM
+  </button>
+</div>
+
+<div id="pageKeuangan">
 <div class="fbar">
   <label>Tahun</label>
-  <select id="sYear" onchange="renderAll()">
+  <select id="sYear" onchange="currentTab==='sdm'?renderSDM():renderAll()">
     <option value="all">Semua</option>
     <option value="2025">2025</option>
     <option value="2026" selected>2026</option>
     <option value="2026">2026</option>
   </select>
   <label>Proyek</label>
-  <select id="sProj" onchange="renderAll()">
+  <select id="sProj" onchange="currentTab==='sdm'?renderSDM():renderAll()">
     <option value="all">Semua Proyek</option>
   </select>
+</div>
+
+</div><!-- /pageKeuangan -->
+
+<div id="pageSDM" style="display:none">
+  <div class="body" style="padding-top:14px">
+    <div id="sdmContent"></div>
+  </div>
 </div>
 
 <div id="dashboard"></div>
@@ -1301,6 +1322,41 @@ function buildProjectFinance(d) {
 // ═══════════════════════════════════════════════════════════════
 // RENDER
 // ═══════════════════════════════════════════════════════════════
+// ── TAB SWITCHING ──────────────────────────────────────────────
+var currentTab = 'keuangan';
+
+function switchTab(tab) {
+  currentTab = tab;
+  var isKeu = tab === 'keuangan';
+  document.getElementById('pageKeuangan').style.display = isKeu ? '' : 'none';
+  document.getElementById('pageSDM').style.display      = isKeu ? 'none' : '';
+
+  var tKeu = document.getElementById('tabKeuangan');
+  var tSDM = document.getElementById('tabSDM');
+  var active   = 'color:var(--green);border-bottom:2px solid var(--green);margin-bottom:-2px';
+  var inactive = 'color:var(--tx2);border-bottom:2px solid transparent;margin-bottom:-2px';
+
+  // Reset styles (keep base padding/font)
+  tKeu.style.cssText = 'padding:10px 20px;border:none;background:none;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;' + (isKeu ? active : inactive);
+  tSDM.style.cssText = 'padding:10px 20px;border:none;background:none;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;' + (!isKeu ? active : inactive);
+
+  if (!isKeu) renderSDM();
+}
+
+function renderSDM() {
+  var d = getFiltered();
+  var sdmCount = d.sdm ? d.sdm.length : 0;
+  document.getElementById('sdmContent').innerHTML =
+    '<div class="cgrid" style="margin-top:0">'
+    + '<div class="card" style="border-left:4px solid #4C1D95">'
+    + '<div class="ctitle" style="display:flex;justify-content:space-between;align-items:center">'
+    + '<span>👥 Manajemen SDM & Manfaat Personel</span>'
+    + '<span style="font-size:10px;font-weight:400;color:var(--tx2)">'+(sdmCount ? sdmCount+' baris' : '—')+'</span>'
+    + '</div>'
+    + buildSDM(d)
+    + '</div></div>';
+}
+
 function renderAll() {
   var d = getFiltered();
   var m = computeMetrics(d);
@@ -1414,16 +1470,6 @@ function renderAll() {
           +'</div>';
       }).join('')
     + '</div></div></div>'
-
-    // ROW SDM: Manajemen SDM
-    + '<div class="cgrid" style="margin-top:0">'
-    + '<div class="card" style="border-left:4px solid #4C1D95">'
-    + '<div class="ctitle" style="display:flex;justify-content:space-between;align-items:center">'
-    + '<span>👥 Manajemen SDM & Manfaat Personel</span>'
-    + '<span style="font-size:10px;font-weight:400;color:var(--tx2)">'+(d.sdm&&d.sdm.length?d.sdm.length+' personel aktif':'—')+'</span>'
-    + '</div>'
-    + buildSDM(d)
-    + '</div></div>'
 
     // REKONSILIASI BOX (paling bawah)
     + '<div class="cgrid" style="margin-top:0">'
