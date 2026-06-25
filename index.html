@@ -1442,7 +1442,47 @@ function buildProjectFinance(d) {
 // ── TAB SWITCHING ──────────────────────────────────────────────
 var currentTab = 'keuangan';
 
+// ═══════════════════════════════════════════════════════════════
+// AKSES / PASSWORD GATE  (kunci ringan per-halaman)
+// >>> GANTI PASSWORD DEFAULT DI BARIS BAWAH INI <<<
+var APP_PW = { keuangan: 'keuangan2026', sdm: 'sdm2026' };
+// ═══════════════════════════════════════════════════════════════
+var gateState = {};
+try { gateState = JSON.parse(sessionStorage.getItem('laberp_gate') || '{}'); } catch(e) { gateState = {}; }
+var loginPending = 'keuangan';
+function gateUnlocked(tab){ return !!gateState[tab]; }
+function updateLoginUI(){
+  var k=document.getElementById('lgKeu'), s=document.getElementById('lgSdm');
+  if(!k||!s) return;
+  var on='flex:1;padding:9px 6px;border-radius:8px;border:1.5px solid #1b5e20;background:#1b5e20;color:#fff;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit';
+  var off='flex:1;padding:9px 6px;border-radius:8px;border:1.5px solid #ccc;background:#fff;color:#555;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit';
+  k.style.cssText = loginPending==='keuangan'?on:off;
+  s.style.cssText = loginPending==='sdm'?on:off;
+}
+function loginPick(tab){ loginPending=tab; updateLoginUI(); var p=document.getElementById('lgPass'); if(p){p.value='';p.focus();} var e=document.getElementById('lgErr'); if(e)e.style.display='none'; }
+function showLogin(tab){ loginPending=tab||'keuangan'; var o=document.getElementById('loginOverlay'); if(o)o.style.display='flex'; updateLoginUI(); var p=document.getElementById('lgPass'); if(p){p.value=''; setTimeout(function(){try{p.focus();}catch(e){}},60);} }
+function hideLogin(){ var o=document.getElementById('loginOverlay'); if(o)o.style.display='none'; }
+function doLogin(){
+  var val=(document.getElementById('lgPass')||{}).value||'';
+  if(val===APP_PW[loginPending]){
+    gateState[loginPending]=true;
+    try{ sessionStorage.setItem('laberp_gate', JSON.stringify(gateState)); }catch(e){}
+    hideLogin();
+    switchTab(loginPending);
+  } else {
+    var e=document.getElementById('lgErr');
+    if(e){ e.textContent='Password salah untuk halaman '+(loginPending==='keuangan'?'Keuangan':'SDM')+'.'; e.style.display='block'; }
+  }
+}
+function gateInit(){
+  if(gateUnlocked('keuangan')){ hideLogin(); switchTab('keuangan'); }
+  else if(gateUnlocked('sdm')){ hideLogin(); switchTab('sdm'); }
+  else { showLogin('keuangan'); }
+}
+document.addEventListener('DOMContentLoaded', gateInit);
+
 function switchTab(tab) {
+  if (!gateUnlocked(tab)) { showLogin(tab); return; }
   currentTab = tab;
   var isKeu = tab === 'keuangan';
   document.getElementById('pageKeuangan').style.display = isKeu ? '' : 'none';
@@ -1804,6 +1844,21 @@ window.addEventListener('DOMContentLoaded', function() {
 <!-- ═══════════════════════════════════════════════════════════════
      INPUT TRANSAKSI MODAL
      ═══════════════════════════════════════════════════════════════ -->
+<div id="loginOverlay" style="display:flex;position:fixed;inset:0;background:#0d3b1e;z-index:9999;align-items:center;justify-content:center;padding:16px">
+  <div style="background:#fff;border-radius:12px;max-width:360px;width:92%;padding:22px 22px 24px;box-shadow:0 10px 40px rgba(0,0,0,.35)">
+    <div style="text-align:center;font-size:17px;font-weight:700;color:#1b5e20">🔒 LabERP</div>
+    <div style="text-align:center;font-size:11px;color:#666;margin:4px 0 16px">Pilih halaman lalu masukkan password</div>
+    <div style="display:flex;gap:8px;margin-bottom:12px">
+      <button id="lgKeu" type="button" onclick="loginPick('keuangan')" style="flex:1;padding:9px 6px;border-radius:8px;border:1.5px solid #1b5e20;background:#1b5e20;color:#fff;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">💰 Keuangan</button>
+      <button id="lgSdm" type="button" onclick="loginPick('sdm')" style="flex:1;padding:9px 6px;border-radius:8px;border:1.5px solid #ccc;background:#fff;color:#555;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">👥 SDM</button>
+    </div>
+    <input id="lgPass" type="password" placeholder="Password" autocomplete="off" onkeydown="if(event.key==='Enter'){doLogin();}" style="width:100%;box-sizing:border-box;padding:10px 12px;border:1px solid #ccc;border-radius:8px;font-size:13px;font-family:inherit">
+    <div id="lgErr" style="display:none;color:#A32D2D;font-size:11px;margin-top:8px"></div>
+    <button type="button" onclick="doLogin()" style="width:100%;margin-top:12px;padding:11px;background:#1b5e20;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">Masuk</button>
+    <div style="text-align:center;font-size:9px;color:#999;margin-top:10px">Akses terbatas · LabERP</div>
+  </div>
+</div>
+
 <div id="inputModalOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1000;align-items:center;justify-content:center;padding:16px">
   <div style="background:#fff;border-radius:12px;max-width:480px;width:100%;max-height:90vh;overflow-y:auto;box-shadow:0 8px 30px rgba(0,0,0,.25)">
 
