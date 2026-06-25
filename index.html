@@ -931,43 +931,179 @@ function buildRekonsiliasi(d, m) {
 // ═══════════════════════════════════════════════════════════════
 // SDM — MANAJEMEN SUMBER DAYA MANUSIA
 // ═══════════════════════════════════════════════════════════════
+var SDM_COLORS = ['#378ADD','#1D9E75','#EF9F27','#7F77DD','#D85A30','#D4537E','#639922','#0C447C','#BA7517','#185FA5'];
+var _sdmViz = null;
+var sdmSortMode = 'val';
+
 function buildSDM(d) {
   var rows = d.sdm || [];
   if (!rows.length) return '<p style="font-size:11px;color:var(--tx2);padding:8px 0">Belum ada data SDM. Tambahkan baris di sheet <b>SDM</b> Google Sheets.</p>';
 
-  // ── Ringkasan agregat ────────────────────────────────────────
-  var totalKontrak = 0, totalDibayar = 0, totalOrang = 0;
-  var namaSet = {};
-  rows.forEach(function(r) {
-    totalKontrak += toNum(get(r,'nilai_kontrak_sdm'));
-    totalDibayar += toNum(get(r,'sudah_dibayar'));
-    var nm = normName(get(r,'nama_personel'));
-    if (nm && !namaSet[nm]) { namaSet[nm] = true; totalOrang++; }
-  });
-  var totalSisa = totalKontrak - totalDibayar;
-  var pctBayar  = totalKontrak ? Math.round(totalDibayar / totalKontrak * 100) : 0;
-  var pctColor  = pctBayar > 90 ? '#27500A' : pctBayar > 50 ? '#633806' : '#A32D2D';
+  var V = aggregateSDM(rows);
+  _sdmViz = V;
+  var t = V.totals;
+  var pctBayar = t.manfaat ? Math.round(t.dibayar / t.manfaat * 100) : 0;
 
-  // ── Group by proyek supaya mudah dibaca ──────────────────────
+  var html = '';
+
+  html += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px">'
+    + sdmStat('\u{1F465} Total Personel', t.orang + ' orang <span style="font-size:9px;color:var(--tx2)">· ' + t.penugasan + ' penugasan</span>', '#0C447C')
+    + sdmStat('\u{1F4CB} Total Manfaat', idr(t.manfaat), '#633806')
+    + sdmStat('✅ Sudah Dibayar', idr(t.dibayar) + ' <span style="color:#27500A;font-size:9px">(' + pctBayar + '%)</span>', '#27500A')
+    + sdmStat('⏳ Akan Dibayar · aktif', idr(t.sisa), t.sisa > 0 ? '#A32D2D' : '#27500A')
+    + '</div>';
+
+  html += '<div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:8px">'
+    + '<span style="font-size:10px;color:var(--tx2)">Urutkan:</span>'
+    + '<button id="sdmBtnVal" onclick="sdmSetSort(\'val\')" style="font-size:10px;padding:4px 10px;border-radius:6px;border:1px solid var(--border);cursor:pointer">Besaran</button>'
+    + '<button id="sdmBtnFreq" onclick="sdmSetSort(\'freq\')" style="font-size:10px;padding:4px 10px;border-radius:6px;border:1px solid var(--border);cursor:pointer">Frekuensi (×)</button>'
+    + '<span id="sdmLegend" style="display:flex;flex-wrap:wrap;gap:10px;margin-left:auto;font-size:10px;color:var(--tx2)"></span>'
+    + '</div>';
+
+  html += '<div id="sdmChartWrap" style="position:relative;width:100%;height:300px;margin-bottom:16px"><canvas id="sdmChart"></canvas></div>';
+
+  html += '<div style="font-size:11px;font-weight:700;color:var(--tx);margin:6px 0 6px">Ranking manfaat per orang</div>'
+    + '<div style="overflow:auto"><table style="width:100%;border-collapse:collapse">'
+    + '<thead><tr style="font-size:10px;color:var(--tx2)">'
+    + '<th style="padding:5px 8px;text-align:right;font-weight:500;border-bottom:1px solid var(--border)">#</th>'
+    + '<th style="padding:5px 8px;text-align:left;font-weight:500;border-bottom:1px solid var(--border)">Nama</th>'
+    + '<th style="padding:5px 8px;text-align:center;font-weight:500;border-bottom:1px solid var(--border)">Kali</th>'
+    + '<th style="padding:5px 8px;text-align:right;font-weight:500;border-bottom:1px solid var(--border)">Manfaat</th>'
+    + '<th style="padding:5px 8px;text-align:right;font-weight:500;border-bottom:1px solid var(--border)">Dibayar</th>'
+    + '<th style="padding:5px 8px;text-align:right;font-weight:500;border-bottom:1px solid var(--border)">Sisa</th>'
+    + '<th style="padding:5px 8px;text-align:center;font-weight:500;border-bottom:1px solid var(--border)">Proyek</th>'
+    + '</tr></thead><tbody id="sdmRankBody"></tbody></table></div>';
+
+  html += '<div style="margin-top:18px;padding-top:12px;border-top:1px solid var(--border);font-size:11px;font-weight:700;color:var(--tx);margin-bottom:8px">Detail per proyek</div>';
+  html += buildSDMDetail(rows);
+
+  return html;
+}
+
+function aggregateSDM(rows) {
+  var people = {}, order = [], projTot = {};
+  rows.forEach(function(r) {
+    var nmRaw = String(get(r,'nama_personel')||'').trim();
+    if (!nmRaw) return;
+    var key = normName(nmRaw);
+    var proyek = String(get(r,'nama_proyek')||'— Tanpa Proyek —').trim();
+    var kontrak = toNum(get(r,'nilai_kontrak_sdm'));
+    var dibayar = toNum(get(r,'sudah_dibayar'));
+    var selesai = /selesai/i.test(String(get(r,'status')||''));
+    var manfaat = selesai ? dibayar : kontrak;
+    var sisa = selesai ? 0 : Math.max(0, kontrak - dibayar);
+    if (!people[key]) { people[key] = {name:nmRaw, kali:0, manfaat:0, dibayar:0, sisa:0, proj:{}}; order.push(key); }
+    var p = people[key];
+    p.kali += 1; p.manfaat += manfaat; p.dibayar += dibayar; p.sisa += sisa;
+    p.proj[proyek] = (p.proj[proyek]||0) + manfaat;
+    projTot[proyek] = (projTot[proyek]||0) + manfaat;
+  });
+  var arr = order.map(function(k){ return people[k]; });
+  var projects = Object.keys(projTot).sort(function(a,b){ return projTot[b]-projTot[a]; });
+  var colorOf = {};
+  projects.forEach(function(pr,i){ colorOf[pr] = SDM_COLORS[i % SDM_COLORS.length]; });
+  return {
+    people: arr, projects: projects, projTot: projTot, colorOf: colorOf,
+    totals: {
+      orang: arr.length, penugasan: rows.length,
+      manfaat: arr.reduce(function(s,p){return s+p.manfaat;},0),
+      dibayar: arr.reduce(function(s,p){return s+p.dibayar;},0),
+      sisa: arr.reduce(function(s,p){return s+p.sisa;},0)
+    }
+  };
+}
+
+function sdmSortedPeople() {
+  var a = (_sdmViz ? _sdmViz.people.slice() : []);
+  if (sdmSortMode === 'freq') a.sort(function(x,y){ return y.kali-x.kali || y.manfaat-x.manfaat; });
+  else a.sort(function(x,y){ return y.manfaat-x.manfaat; });
+  return a;
+}
+
+function sdmRenderViz() {
+  if (!_sdmViz || typeof Chart === 'undefined') return;
+  sdmRenderLegend(); sdmRenderChart(); sdmRenderRank(); sdmUpdateToggle();
+}
+
+function sdmRenderChart() {
+  var el = document.getElementById('sdmChart'); if (!el) return;
+  if (charts.sdm) { try { charts.sdm.destroy(); } catch(e){} }
+  var ppl = sdmSortedPeople();
+  var wrap = document.getElementById('sdmChartWrap');
+  if (wrap) wrap.style.height = Math.max(160, ppl.length*32 + 70) + 'px';
+  var labels = ppl.map(function(p){ return p.name + ' (' + p.kali + '×)'; });
+  var ds = _sdmViz.projects.map(function(pr){
+    return { label: pr, data: ppl.map(function(p){ return p.proj[pr]||0; }), backgroundColor: _sdmViz.colorOf[pr], borderWidth: 0 };
+  });
+  charts.sdm = new Chart(el, {
+    type: 'bar',
+    data: { labels: labels, datasets: ds },
+    options: {
+      indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+      interaction: { mode: 'index', axis: 'y', intersect: false },
+      scales: {
+        x: { stacked: true, ticks: { callback: function(v){ return 'Rp' + (v/1e6) + 'jt'; }, font: { size: 10 } } },
+        y: { stacked: true, ticks: { font: { size: 10 } }, grid: { display: false } }
+      },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          filter: function(it){ return it.raw > 0; },
+          callbacks: {
+            label: function(c){ return c.dataset.label + ': ' + idr(c.raw); },
+            footer: function(items){ var s=0; items.forEach(function(i){ s+=i.raw; }); return 'Total manfaat: ' + idr(s); }
+          }
+        }
+      }
+    }
+  });
+}
+
+function sdmRenderRank() {
+  var tb = document.getElementById('sdmRankBody'); if (!tb) return;
+  var ppl = sdmSortedPeople(), html = '';
+  ppl.forEach(function(p,i){
+    var keys = Object.keys(p.proj).filter(function(k){ return p.proj[k] > 0; });
+    var tip = keys.map(function(k){ return k + ': ' + idr(p.proj[k]); }).join(' | ').replace(/"/g,'');
+    html += '<tr style="border-bottom:1px solid var(--border)" title="' + tip + '">'
+      + '<td style="padding:6px 8px;text-align:right;font-size:10px;color:var(--tx2)">' + (i+1) + '</td>'
+      + '<td style="padding:6px 8px;font-size:11px;font-weight:500">' + p.name + '</td>'
+      + '<td style="padding:6px 8px;text-align:center;font-size:11px">' + p.kali + '×</td>'
+      + '<td style="padding:6px 8px;text-align:right;font-size:11px;font-weight:500">' + idr(p.manfaat) + '</td>'
+      + '<td style="padding:6px 8px;text-align:right;font-size:11px;color:#27500A">' + idr(p.dibayar) + '</td>'
+      + '<td style="padding:6px 8px;text-align:right;font-size:11px;color:' + (p.sisa>0?'#A32D2D':'var(--tx2)') + '">' + idr(p.sisa) + '</td>'
+      + '<td style="padding:6px 8px;text-align:center;font-size:10px;color:var(--tx2)">' + keys.length + '</td>'
+      + '</tr>';
+  });
+  tb.innerHTML = html;
+}
+
+function sdmRenderLegend() {
+  var el = document.getElementById('sdmLegend'); if (!el || !_sdmViz) return;
+  el.innerHTML = _sdmViz.projects.map(function(pr){
+    return '<span style="display:inline-flex;align-items:center;gap:4px"><span style="width:9px;height:9px;border-radius:2px;background:' + _sdmViz.colorOf[pr] + '"></span>' + pr + ' ' + idr(_sdmViz.projTot[pr]) + '</span>';
+  }).join('');
+}
+
+function sdmUpdateToggle() {
+  var bv = document.getElementById('sdmBtnVal'), bf = document.getElementById('sdmBtnFreq');
+  if (!bv || !bf) return;
+  var on = 'font-size:10px;padding:4px 10px;border-radius:6px;cursor:pointer;border:1px solid var(--green);background:var(--green);color:#fff';
+  var off = 'font-size:10px;padding:4px 10px;border-radius:6px;cursor:pointer;border:1px solid var(--border);background:none;color:var(--tx2)';
+  bv.style.cssText = sdmSortMode==='val' ? on : off;
+  bf.style.cssText = sdmSortMode==='freq' ? on : off;
+}
+
+function sdmSetSort(m) { sdmSortMode = m; sdmUpdateToggle(); sdmRenderChart(); sdmRenderRank(); }
+
+function buildSDMDetail(rows) {
   var groups = {}, gOrder = [];
   rows.forEach(function(r) {
     var pn = get(r,'nama_proyek') || '— Tanpa Proyek —';
     if (!groups[pn]) { groups[pn] = []; gOrder.push(pn); }
     groups[pn].push(r);
   });
-
-  // ── Render ───────────────────────────────────────────────────
   var html = '';
-
-  // Ringkasan bar di atas
-  html += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px;padding-bottom:14px;border-bottom:1px solid var(--border)">'
-    + sdmStat('👥 Total Personel', totalOrang + ' orang', '#0C447C')
-    + sdmStat('📋 Total Nilai SDM', idr(totalKontrak), '#633806')
-    + sdmStat('✅ Sudah Dibayar', idr(totalDibayar) + ' <span style="color:'+pctColor+';font-size:9px">('+pctBayar+'%)</span>', '#27500A')
-    + sdmStat('⏳ Sisa Tagihan', idr(totalSisa), totalSisa > 0 ? '#A32D2D' : '#27500A')
-    + '</div>';
-
-  // Tabel per proyek
   gOrder.forEach(function(pn) {
     var pRows = groups[pn];
     var pKontrak = 0, pDibayar = 0;
@@ -977,20 +1113,11 @@ function buildSDM(d) {
     });
     var pPct = pKontrak ? Math.round(pDibayar/pKontrak*100) : 0;
     var pCol = pPct>=100?'#27500A':pPct>=50?'#633806':'#A32D2D';
-
     html += '<div style="margin-bottom:16px">'
-      // Proyek header
-      + '<div style="display:flex;justify-content:space-between;align-items:center;'
-        + 'padding:6px 10px;background:var(--gray-l);border-radius:6px;margin-bottom:6px">'
+      + '<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 10px;background:var(--gray-l);border-radius:6px;margin-bottom:6px">'
         + '<span style="font-size:11px;font-weight:600;color:var(--tx)">'+pn+'</span>'
-        + '<span style="font-size:10px;color:var(--tx2)">'
-          + pRows.length+' personel &nbsp;·&nbsp; '
-          + 'Dibayar <b style="color:'+pCol+'">'+idr(pDibayar)+'</b>'
-          + ' / '+idr(pKontrak)
-          + ' <b style="color:'+pCol+'">('+pPct+'%)</b>'
-        + '</span>'
+        + '<span style="font-size:10px;color:var(--tx2)">'+pRows.length+' personel &nbsp;·&nbsp; Dibayar <b style="color:'+pCol+'">'+idr(pDibayar)+'</b> / '+idr(pKontrak)+' <b style="color:'+pCol+'">('+pPct+'%)</b></span>'
       + '</div>'
-      // Baris per orang
       + '<table style="width:100%;border-collapse:collapse">'
       + '<thead><tr style="font-size:10px;color:var(--tx2)">'
         + '<th style="padding:4px 8px;text-align:left;font-weight:500;border-bottom:1px solid var(--border)">Nama</th>'
@@ -998,26 +1125,16 @@ function buildSDM(d) {
         + '<th style="padding:4px 8px;text-align:right;font-weight:500;border-bottom:1px solid var(--border)">Nilai Kontrak</th>'
         + '<th style="padding:4px 8px;text-align:right;font-weight:500;border-bottom:1px solid var(--border)">Dibayar</th>'
         + '<th style="padding:4px 8px;text-align:right;font-weight:500;border-bottom:1px solid var(--border)">Sisa</th>'
-        + '<th style="padding:4px 8px;text-align:center;font-weight:500;border-bottom:1px solid var(--border)">Progress</th>'
         + '<th style="padding:4px 8px;text-align:center;font-weight:500;border-bottom:1px solid var(--border)">Status</th>'
         + '<th style="padding:4px 8px;text-align:left;font-weight:500;border-bottom:1px solid var(--border)">Catatan</th>'
       + '</tr></thead><tbody>';
-
     pRows.forEach(function(r) {
       var kontrak = toNum(get(r,'nilai_kontrak_sdm'));
       var dibayar = toNum(get(r,'sudah_dibayar'));
-      var sisa    = kontrak - dibayar;
-      var pct     = kontrak ? Math.round(dibayar/kontrak*100) : 0;
-      var barCol  = pct>=100?'#27500A':pct>=50?'#3B6D11':'#EF9F27';
-      var status  = (get(r,'status')||'').trim();
-      var sPill   = status==='Aktif' ? 'background:#EAF3DE;color:#27500A'
-                  : status==='Selesai' ? 'background:#E6F1FB;color:#0C447C'
-                  : 'background:#FEF3C7;color:#92400E';
-      var tipe    = get(r,'tipe')||'';
-      var tPill   = tipe==='Tim Inti Proyek'
-                    ? 'background:#EDE9FE;color:#4C1D95'
-                    : 'background:#FEF3C7;color:#92400E';
-
+      var selesai = /selesai/i.test(String(get(r,'status')||''));
+      var sisa = selesai ? 0 : Math.max(0, kontrak - dibayar);
+      var status = String(get(r,'status')||'').trim();
+      var sPill = status==='Aktif' ? 'background:#EAF3DE;color:#27500A' : status==='Selesai' ? 'background:#E6F1FB;color:#0C447C' : 'background:#FEF3C7;color:#92400E';
       var catatan = get(r,'catatan')||'';
       html += '<tr style="border-bottom:1px solid var(--border)">'
         + '<td style="padding:7px 8px;font-size:11px;font-weight:500">'+get(r,'nama_personel')+'</td>'
@@ -1025,22 +1142,12 @@ function buildSDM(d) {
         + '<td style="padding:7px 8px;text-align:right;font-size:11px">'+idr(kontrak)+'</td>'
         + '<td style="padding:7px 8px;text-align:right;font-size:11px;color:#27500A;font-weight:500">'+idr(dibayar)+'</td>'
         + '<td style="padding:7px 8px;text-align:right;font-size:11px;color:'+(sisa>0?'#A32D2D':'#27500A')+';font-weight:500">'+idr(sisa)+'</td>'
-        + '<td style="padding:7px 8px;min-width:70px">'
-            + '<div style="background:var(--gray-l);border-radius:3px;height:6px;overflow:hidden">'
-              + '<div style="height:100%;width:'+Math.min(100,pct)+'%;background:'+barCol+';border-radius:3px"></div>'
-            + '</div>'
-            + '<div style="font-size:9px;color:var(--tx2);text-align:center;margin-top:2px">'+pct+'%</div>'
-          + '</td>'
-        + '<td style="padding:7px 8px;text-align:center">'
-            + '<span style="font-size:9px;padding:2px 8px;border-radius:10px;font-weight:600;'+sPill+'">'+status+'</span>'
-          + '</td>'
+        + '<td style="padding:7px 8px;text-align:center"><span style="font-size:9px;padding:2px 8px;border-radius:10px;font-weight:600;'+sPill+'">'+status+'</span></td>'
         + '<td style="padding:7px 8px;font-size:10px;color:var(--tx2)">'+catatan+'</td>'
         + '</tr>';
     });
-
     html += '</tbody></table></div>';
   });
-
   return html;
 }
 
@@ -1372,6 +1479,10 @@ function renderSDM() {
 
   var sdmRows = (D.sdm||[]).filter(function(r){
     if(projVal !== 'all' && normName(get(r,'nama_proyek')) !== normName(projVal)) return false;
+    if(yearVal !== 'all'){
+      var dm = String(get(r,'tanggal_mulai')||''), ds = String(get(r,'tanggal_selesai')||'');
+      if(dm.indexOf(yearVal) < 0 && ds.indexOf(yearVal) < 0) return false;
+    }
     return true;
   });
 
@@ -1385,6 +1496,8 @@ function renderSDM() {
     + '</div>'
     + buildSDM({sdm: sdmRows, projects: D.projects||[]})
     + '</div></div>';
+
+  sdmRenderViz();
 }
 
 function renderAll() {
