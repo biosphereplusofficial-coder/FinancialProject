@@ -1118,6 +1118,7 @@ function sdmRenderChart() {
     options: {
       indexAxis: 'y', responsive: true, maintainAspectRatio: false,
       interaction: { mode: 'index', axis: 'y', intersect: false },
+      layout: { padding: { right: 76 } },
       scales: {
         x: { stacked: true, ticks: { callback: function(v){ return 'Rp' + (v/1e6) + 'jt'; }, font: { size: 10 } } },
         y: { stacked: true, ticks: { font: { size: 10 } }, grid: { display: false } }
@@ -1132,7 +1133,25 @@ function sdmRenderChart() {
           }
         }
       }
-    }
+    },
+    plugins: [{
+      id: 'sdmTotalLabel',
+      afterDatasetsDraw: function(chart){
+        var ctx = chart.ctx, xs = chart.scales.x, dss = chart.data.datasets, meta0 = chart.getDatasetMeta(0);
+        ctx.save();
+        ctx.font = '700 10px system-ui';
+        ctx.fillStyle = '#2C2C2A';
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'middle';
+        meta0.data.forEach(function(bar, i){
+          var total = 0;
+          dss.forEach(function(ds){ total += (+ds.data[i] || 0); });
+          if(total <= 0) return;
+          ctx.fillText(idr(total), xs.getPixelForValue(total) + 6, bar.y);
+        });
+        ctx.restore();
+      }
+    }]
   });
 }
 
