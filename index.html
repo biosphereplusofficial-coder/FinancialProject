@@ -88,11 +88,32 @@ tr:hover td{background:#FAFAF8}
 @media(max-width:480px){.mgrid{grid-template-columns:1fr}}
 footer{text-align:center;padding:16px;font-size:11px;color:var(--tx2);border-top:1px solid var(--border);margin-top:4px}
 footer a{color:var(--green)}
+/* ====== EXPORT / PRINT (A4) ====== */
+#printHeader{display:none}
+@media print{
+  @page{size:A4;margin:14mm 12mm}
+  html,body{background:#fff!important}
+  #pbar,.hdr,#tabNav,.fbar,.warn,#loginOverlay,#inputModalOverlay,#footer,.no-print{display:none!important}
+  #printHeader{display:block!important;margin-bottom:12px}
+  .body{padding:0!important}
+  tr,.acard,.mgrid>div{break-inside:avoid}
+  *{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}
+}
 </style>
 </head>
 <body>
 
 <div id="pbar"></div>
+
+<div id="printHeader">
+  <div style="display:flex;align-items:flex-end;justify-content:space-between;border-bottom:2px solid #1b5e20;padding-bottom:8px">
+    <div>
+      <div id="phTitle" style="font-size:19px;font-weight:700;color:#1b5e20">Laporan Project LABTECH</div>
+      <div id="phTime" style="font-size:11px;color:#555;margin-top:3px"></div>
+    </div>
+    <div style="font-size:14px;font-weight:700;color:#1b5e20">LABTECH</div>
+  </div>
+</div>
 
 <div class="hdr">
   <h1><span class="dot" id="dot"></span>LabERP &middot; Dashboard Keuangan Proyek</h1>
@@ -130,6 +151,7 @@ footer a{color:var(--green)}
   <select id="sProj" onchange="currentTab==='sdm'?renderSDM():renderAll()">
     <option value="all">Semua Proyek</option>
   </select>
+  <button onclick="exportPDF('keuangan')" class="no-print" style="margin-left:auto;font-size:11px;padding:5px 12px;border-radius:6px;border:1px solid var(--green);background:var(--green);color:#fff;cursor:pointer;font-weight:600;font-family:inherit">⤓ Export PDF</button>
 </div>
 <div id="dashboard"></div>
 </div><!-- /pageKeuangan -->
@@ -146,6 +168,7 @@ footer a{color:var(--green)}
     <select id="sProjSDM" onchange="renderSDM()">
       <option value="all">Semua Proyek</option>
     </select>
+    <button onclick="exportPDF('sdm')" class="no-print" style="margin-left:auto;font-size:11px;padding:5px 12px;border-radius:6px;border:1px solid var(--green);background:var(--green);color:#fff;cursor:pointer;font-weight:600;font-family:inherit">⤓ Export PDF</button>
   </div>
   <div class="body" style="padding-top:14px">
     <div id="sdmContent"></div>
@@ -954,9 +977,9 @@ function buildSDM(d) {
     + '</div>';
 
   html += '<div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:8px">'
-    + '<span style="font-size:10px;color:var(--tx2)">Urutkan:</span>'
-    + '<button id="sdmBtnVal" onclick="sdmSetSort(\'val\')" style="font-size:10px;padding:4px 10px;border-radius:6px;border:1px solid var(--border);cursor:pointer">Besaran</button>'
-    + '<button id="sdmBtnFreq" onclick="sdmSetSort(\'freq\')" style="font-size:10px;padding:4px 10px;border-radius:6px;border:1px solid var(--border);cursor:pointer">Frekuensi (×)</button>'
+    + '<span class="no-print" style="font-size:10px;color:var(--tx2)">Urutkan:</span>'
+    + '<button id="sdmBtnVal" class="no-print" onclick="sdmSetSort(\'val\')" style="font-size:10px;padding:4px 10px;border-radius:6px;border:1px solid var(--border);cursor:pointer">Besaran</button>'
+    + '<button id="sdmBtnFreq" class="no-print" onclick="sdmSetSort(\'freq\')" style="font-size:10px;padding:4px 10px;border-radius:6px;border:1px solid var(--border);cursor:pointer">Frekuensi (×)</button>'
     + '<span id="sdmLegend" style="display:flex;flex-wrap:wrap;gap:10px;margin-left:auto;font-size:10px;color:var(--tx2)"></span>'
     + '</div>';
 
@@ -1827,6 +1850,19 @@ function startAutoRefresh() {
       loadAll();
     }
   }, 1000);
+}
+
+function fmtNowID(){
+  var d=new Date();
+  var bulan=['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
+  function p(n){return (n<10?'0':'')+n;}
+  return p(d.getDate())+' '+bulan[d.getMonth()]+' '+d.getFullYear()+', '+p(d.getHours())+':'+p(d.getMinutes())+' WIB';
+}
+function exportPDF(section){
+  var t = section==='sdm' ? 'Laporan SDM Project LABTECH' : 'Laporan Keuangan Project LABTECH';
+  var a=document.getElementById('phTitle'); if(a) a.textContent=t;
+  var b=document.getElementById('phTime'); if(b) b.textContent='Diekspor: '+fmtNowID();
+  window.print();
 }
 
 function manualRefresh() {
